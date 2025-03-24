@@ -58,7 +58,7 @@ void HistogramWidget::mouseMoveEvent(QMouseEvent *event) {
     if (binIndex < 0 || binIndex >= 256) return;
 
     int count = histogramData[binIndex]; // Get the corresponding histogram value
-    QToolTip::showText(event->globalPosition().toPoint(),
+    QToolTip::showText(event->globalPos(),
                        QString("Intensity: %1\nCount: %2").arg(binIndex).arg(count), this);
 }
 
