@@ -54,6 +54,12 @@ jobs:
       run: |
         sudo apt-get install qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools
 
+    - name: Copy qt-installer-noninteractive.qs script
+      if: matrix.os == 'windows-latest'
+      run: |
+        mkdir -p ${{ github.workspace }}/scripts
+        cp .github/workflows/qt-installer-noninteractive.qs ${{ github.workspace }}/scripts/qt-installer-noninteractive.qs
+
     - name: Install Qt on Windows
       if: matrix.os == 'windows-latest'
       run: |
