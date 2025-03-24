@@ -42,6 +42,7 @@ jobs:
       shell: bash
       run: |
         echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+
     - name: Install Chocolatey
       if: matrix.os == 'windows-latest'
       run: |
