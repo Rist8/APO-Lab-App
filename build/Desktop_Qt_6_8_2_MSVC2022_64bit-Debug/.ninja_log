@@ -1,0 +1,23 @@
+# ninja log v6
+119	335	7640409943003538	APO-Lab-App_autogen/timestamp	d5512adc70cd355d
+119	335	7640409943003538	APO-Lab-App_autogen/mocs_compilation.cpp	d5512adc70cd355d
+119	335	7640409943003538	D:/Projects/APO-Lab-App/build/Desktop_Qt_6_8_2_MSVC2022_64bit-Debug/APO-Lab-App_autogen/timestamp	d5512adc70cd355d
+119	335	7640409943003538	D:/Projects/APO-Lab-App/build/Desktop_Qt_6_8_2_MSVC2022_64bit-Debug/APO-Lab-App_autogen/mocs_compilation.cpp	d5512adc70cd355d
+2474	10179	7640408252071359	CMakeFiles/APO-Lab-App.dir/APO-Lab-App_autogen/mocs_compilation.cpp.obj	f66f41ad70a5f13c
+2487	9951	7640408252200754	CMakeFiles/APO-Lab-App.dir/mainwindow.cpp.obj	272f4aa5d37b8be6
+5131	5565	7640409993116511	APO-Lab-App.exe	72fd42ec2cc453c4
+2481	10049	7640408252140471	CMakeFiles/APO-Lab-App.dir/main.cpp.obj	cd19db094132b2a4
+339	5130	7640409945195982	CMakeFiles/APO-Lab-App.dir/imageviewer.cpp.obj	ac84db2398455afc
+2501	9432	7640408252338655	CMakeFiles/APO-Lab-App.dir/histogramwidget.cpp.obj	80380ff016c10e86
+91	1779	7644422134225024	APO-Lab-App_autogen/timestamp	d5512adc70cd355d
+91	1779	7644422134225024	APO-Lab-App_autogen/mocs_compilation.cpp	d5512adc70cd355d
+91	1779	7644422134225024	D:/Projects/APO-Lab-App/build/Desktop_Qt_6_8_2_MSVC2022_64bit-Debug/APO-Lab-App_autogen/timestamp	d5512adc70cd355d
+91	1779	7644422134225024	D:/Projects/APO-Lab-App/build/Desktop_Qt_6_8_2_MSVC2022_64bit-Debug/APO-Lab-App_autogen/mocs_compilation.cpp	d5512adc70cd355d
+1805	5486	7644422135368197	CMakeFiles/APO-Lab-App.dir/rangestretchingdialog.cpp.obj	356fe51f9395455
+1811	8473	7644422135433251	CMakeFiles/APO-Lab-App.dir/customfilterdialog.cpp.obj	99c686000fa95f9d
+1786	8501	7644422135183805	CMakeFiles/APO-Lab-App.dir/main.cpp.obj	cd19db094132b2a4
+1799	8760	7644422135317794	CMakeFiles/APO-Lab-App.dir/histogramwidget.cpp.obj	80380ff016c10e86
+1794	9039	7644422135268768	CMakeFiles/APO-Lab-App.dir/imageviewer.cpp.obj	ac84db2398455afc
+1790	9173	7644422135218508	CMakeFiles/APO-Lab-App.dir/mainwindow.cpp.obj	272f4aa5d37b8be6
+1781	9609	7644422135133459	CMakeFiles/APO-Lab-App.dir/APO-Lab-App_autogen/mocs_compilation.cpp.obj	f66f41ad70a5f13c
+9610	10224	7644422213420993	APO-Lab-App.exe	1a414164c2c6351b
