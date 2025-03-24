@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(APO-Lab-App VERSION 0.1 LANGUAGES CXX)
+project(APO-Lab-App VERSION 0.3 LANGUAGES CXX)
 
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
@@ -11,15 +11,20 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
-set(OpenCV_DIR "C:/opencv/build/x64/vc16/lib")
+if(WIN32)
+    set(OpenCV_DIR
+        "C:/opencv/build/x64/vc16/lib"
+    )
+endif()
 find_package(OpenCV REQUIRED)
-include_directories(${OpenCV_INCLUDE_DIRS})
+include_directories(${OpenCV_INCLUDE_DIRS} include)
+
 
 
 set(PROJECT_SOURCES
-        main.cpp
-        mainwindow.cpp
-        mainwindow.h
+        src/main.cpp
+        src/mainwindow.cpp
+        include/mainwindow.h
 
 )
 
@@ -27,13 +32,14 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
     qt_add_executable(APO-Lab-App
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
-        imageviewer.cpp
-        imageviewer.h
-        histogramwidget.h
-        histogramwidget.cpp
-        rangestretchingdialog.h
-        rangestretchingdialog.cpp
-        customfilterdialog.h customfilterdialog.cpp
+        src/imageviewer.cpp
+        include/imageviewer.h
+        include/histogramwidget.h
+        src/histogramwidget.cpp
+        include/rangestretchingdialog.h
+        src/rangestretchingdialog.cpp
+        include/customfilterdialog.h
+        src/customfilterdialog.cpp
     )
 # Define target properties for Android with Qt 6 as:
 #    set_property(TARGET APO-Lab-App APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
