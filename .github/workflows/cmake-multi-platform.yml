@@ -2,9 +2,9 @@ name: CMake on multiple platforms
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build:
@@ -44,38 +44,42 @@ jobs:
       run: |
         echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
-    - name: Install Chocolatey
+    - name: Install dependencies on Windows
       if: matrix.os == 'windows-latest'
       run: |
-        Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
-
-    - name: Setup Qt on Ubuntu
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        sudo apt-get install qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools
-
-    - name: Copy qt-installer-noninteractive.qs script
+        Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+        choco install -y strawberryperl python visualstudio2022buildtools visualstudio2022-workload-vctools ninja cmake git
+        
+    - name: Download Qt source code on Windows
       if: matrix.os == 'windows-latest'
       run: |
-        mkdir -p ${{ github.workspace }}/scripts
-        cp .github/workflows/qt-installer-noninteractive.qs ${{ github.workspace }}/scripts/qt-installer-noninteractive.qs
+        curl -L -o qt-everywhere-src-5.15.2.zip https://download.qt.io/official_releases/qt/5.15/5.15.2/single/qt-everywhere-src-5.15.2.zip
+        tar -xf qt-everywhere-src-5.15.2.zip
+
+    - name: Configure Qt build on Windows
+      if: matrix.os == 'windows-latest'
+      run: |
+        cd qt-everywhere-src-5.15.2
+        mkdir build
+        cd build
+        ..\configure -platform win32-msvc -opensource -confirm-license -release -nomake tests -nomake examples
+
+    - name: Build Qt on Windows
+      if: matrix.os == 'windows-latest'
+      run: |
+        cd qt-everywhere-src-5.15.2\build
+        nmake
 
     - name: Install Qt on Windows
       if: matrix.os == 'windows-latest'
       run: |
-        choco install wget
-        wget -O qt-installer.exe https://download.qt.io/official_releases/online_installers/qt-online-installer-windows-x64-online.exe
-        if (Test-Path -Path .\qt-installer.exe) {
-          .\qt-installer.exe --script qt-installer-noninteractive.qs
-        } else {
-          Write-Error "Qt installer was not downloaded successfully."
-        }
+        cd qt-everywhere-src-5.15.2\build
+        nmake install
 
-    - name: Set Qt Environment on Windows
-      if: matrix.os == 'windows-latest'
+    - name: Install Qt on Ubuntu
+      if: matrix.os == 'ubuntu-latest'
       run: |
-        setx /m CMAKE_PREFIX_PATH "C:\Qt\5.15.2\msvc2019_64"
-        set PATH=%PATH%;C:\Qt\5.15.2\msvc2019_64\bin
+        sudo apt-get install qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools
 
     - name: Install OpenCV on Ubuntu
       if: matrix.os == 'ubuntu-latest'
@@ -87,12 +91,11 @@ jobs:
       if: matrix.os == 'windows-latest'
       run: |
         choco install -y opencv
-        # Optional step to move the installation to C:/opencv if needed
         Move-Item -Path "C:/tools/opencv" -Destination "C:/opencv"
 
     - name: Configure CMake
       run: |
-        cmake -B ${{ steps.strings.outputs.build-output-dir }} -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        cmake -B ${{ steps.strings.outputs.build-output-dir }} -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} .
 
     - name: Build
       run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
