@@ -57,6 +57,19 @@ jobs:
       run: |
         choco install qt5-default
 
+    - name: Install OpenCV on Ubuntu
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libopencv-dev
+
+    - name: Install OpenCV on Windows
+      if: matrix.os == 'windows-latest'
+      run: |
+        choco install -y opencv
+        # Optional step to move the installation to C:/opencv if needed
+        Move-Item -Path "C:/Program Files/opencv" -Destination "C:/opencv"
+
     - name: Configure CMake
       run: |
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
