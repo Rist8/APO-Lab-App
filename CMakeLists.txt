@@ -17,7 +17,8 @@ if(WIN32)
     )
 endif()
 find_package(OpenCV REQUIRED)
-include_directories(${OpenCV_INCLUDE_DIRS} include)
+include_directories(${OpenCV_INCLUDE_DIRS} include ${Qt5Widgets_INCLUDE_DIRS})
+link_directories(${Qt5Widgets_LIBRARY_DIRS})
 
 
 
