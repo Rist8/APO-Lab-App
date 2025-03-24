@@ -52,15 +52,24 @@ jobs:
 
     - name: Add Visual Studio to PATH
       if: matrix.os == 'windows-latest'
+      shell: cmd
       run: |
-        echo ";C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.16.27023\\bin\\Hostx64\\x64" >> $PATH
-        echo ";C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\Hostx64\\x64" >> $PATH
-        echo ";C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\Common7\\Tools" >> $PATH
-        echo ";C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\Common7\\Tools" >> $PATH
+        setx PATH "%PATH%;C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64"
 
-    - name: Verify nmake availability
+
+      
+    - name: Set up MSVC environment
       if: matrix.os == 'windows-latest'
-      run: where nmake
+      shell: cmd
+      run: |
+        call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x64
+
+
+    - name: Check if nmake is installed
+      if: matrix.os == 'windows-latest'
+      shell: cmd
+      run: where nmake || echo "nmake not found"
+
 
     - name: Download Qt source code on Windows
       if: matrix.os == 'windows-latest'
@@ -78,6 +87,7 @@ jobs:
 
     - name: Build Qt on Windows
       if: matrix.os == 'windows-latest'
+      shell: cmd
       run: |
         cd qt-everywhere-src-5.15.2\build
         nmake
