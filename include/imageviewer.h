@@ -57,7 +57,7 @@ private:
     QAction *customFilterAction;
 
     cv::Mat originalImage;
-    float currentScale;
+    double currentScale;
 
     void createMenu();
     void duplicateImage();
