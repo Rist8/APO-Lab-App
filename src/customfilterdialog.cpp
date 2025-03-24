@@ -17,7 +17,7 @@ CustomFilterDialog::CustomFilterDialog(QWidget *parent) : QDialog(parent) {
     // Kernel size selection
     kernelSizeBox = new QComboBox(this);
     kernelSizeBox->addItems({"3x3", "5x5", "7x7", "9x9"});
-    connect(kernelSizeBox, &QComboBox::currentIndexChanged, this, &CustomFilterDialog::updateKernelSize);
+    connect(kernelSizeBox, qOverload<int>(&QComboBox::currentIndexChanged), this, &CustomFilterDialog::updateKernelSize);
     mainLayout->addWidget(kernelSizeBox);
 
     // Grid for kernel input
