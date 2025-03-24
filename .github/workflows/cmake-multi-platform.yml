@@ -53,10 +53,10 @@ jobs:
     - name: Add Visual Studio to PATH
       if: matrix.os == 'windows-latest'
       run: |
-        echo "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.16.27023\\bin\\Hostx64\\x64" >> $GITHUB_PATH
-        echo "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\Hostx64\\x64" >> $GITHUB_PATH
-        echo "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\Common7\\Tools" >> $GITHUB_PATH
-        echo "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\Common7\\Tools" >> $GITHUB_PATH
+        echo ";C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.16.27023\\bin\\Hostx64\\x64" >> $PATH
+        echo ";C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\Hostx64\\x64" >> $PATH
+        echo ";C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\Common7\\Tools" >> $PATH
+        echo ";C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\Common7\\Tools" >> $PATH
 
     - name: Verify nmake availability
       if: matrix.os == 'windows-latest'
