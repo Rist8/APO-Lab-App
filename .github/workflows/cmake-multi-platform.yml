@@ -88,7 +88,7 @@ jobs:
         curl -L -o qt-everywhere-src-5.15.2.zip https://download.qt.io/official_releases/qt/5.15/5.15.2/single/qt-everywhere-src-5.15.2.zip
         tar -xf qt-everywhere-src-5.15.2.zip
 
-    - name: Configure and Build Qt on Windows
+    - name: Configure, Build and Install Qt on Windows
       if: matrix.os == 'windows-latest'
       shell: cmd
       run: |
@@ -100,11 +100,6 @@ jobs:
         cd ..
         cd build
         nmake
-
-    - name: Install Qt on Windows
-      if: matrix.os == 'windows-latest'
-      run: |
-        cd qt-everywhere-src-5.15.2\build
         nmake install
 
     - name: Install Qt on Ubuntu
