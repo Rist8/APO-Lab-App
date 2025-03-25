@@ -88,23 +88,18 @@ jobs:
         curl -L -o qt-everywhere-src-5.15.2.zip https://download.qt.io/official_releases/qt/5.15/5.15.2/single/qt-everywhere-src-5.15.2.zip
         tar -xf qt-everywhere-src-5.15.2.zip
 
-    - name: Configure Qt build on Windows
-      if: matrix.os == 'windows-latest'
-      run: |
-        cd qt-everywhere-src-5.15.2
-        mkdir build
-        cd build
-        ..\configure -platform win32-msvc -opensource -confirm-license -release -nomake tests -nomake examples
-
-    - name: Build Qt on Windows
+    - name: Configure and Build Qt on Windows
       if: matrix.os == 'windows-latest'
       shell: cmd
       run: |
         call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x64
         where nmake
-        cd qt-everywhere-src-5.15.2\build
+        cd D:\a\APO-Lab-App\APO-Lab-App\qt-everywhere-src-5.15.2
+        cd qtbase
+        configure.bat -top-level -platform win32-msvc -opensource -confirm-license -release -nomake tests -nomake examples
+        cd ..
+        cd build
         nmake
-
 
     - name: Install Qt on Windows
       if: matrix.os == 'windows-latest'
