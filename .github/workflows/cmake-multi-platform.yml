@@ -47,14 +47,14 @@ jobs:
       if: matrix.os == 'windows-latest'
       run: |
         Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
-        choco install -y strawberryperl python visualstudio2022buildtools visualstudio2022-workload-vctools ninja cmake git
+        choco install -y strawberryperl python visualstudio2022buildtools visualstudio2022-workload-vctools ninja cmake git aqt
 
-        
     - name: Install Qt on Windows
       if: matrix.os == 'windows-latest'
       run: |
-        choco install -y qt5-default --params "'/Path /modules:qtcharts qtscript qtwidgets qtimageformats qtcore qtgui'"
-
+        aqt install-qt windows desktop 5.15.2 win64_msvc2019_64
+        aqt install-qt windows tools_ifw 4.0.1 win64_msvc2019_64
+        aqt install-qt windows tools_qtcreator 5.0.3 win64_msvc2019_64
 
     - name: Install Qt on Ubuntu
       if: matrix.os == 'ubuntu-latest'
