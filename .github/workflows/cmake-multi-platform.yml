@@ -52,12 +52,14 @@ jobs:
     - name: Install Qt on Windows
       if: matrix.os == 'windows-latest'
       run: |
+        pip install aqtinstall
         aqt install-qt windows desktop 5.15.2 win64_msvc2019_64
 
     - name: Install Qt on Ubuntu
       if: matrix.os == 'ubuntu-latest'
       run: |
-        sudo apt-get install qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools
+        sudo apt-get update
+        sudo apt-get install -y qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools
 
     - name: Install OpenCV on Ubuntu
       if: matrix.os == 'ubuntu-latest'
@@ -71,9 +73,24 @@ jobs:
         choco install -y opencv
         Move-Item -Path "C:/tools/opencv" -Destination "C:/opencv"
 
-    - name: Configure CMake
+    - name: Configure CMake for Windows
+      if: matrix.os == 'windows-latest'
       run: |
-        cmake -B ${{ steps.strings.outputs.build-output-dir }} -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        cmake -B ${{ steps.strings.outputs.build-output-dir }} \
+              -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
+              -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
+              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+              -DCMAKE_PREFIX_PATH=D:\a\APO-Lab-App\APO-Lab-App\5.15.2\msvc2019_64\lib\cmake
+      env:
+        QT_DIR: D:\a\APO-Lab-App\APO-Lab-App\5.15.2\msvc2019_64\lib\cmake
+
+    - name: Configure CMake for Ubuntu
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        cmake -B ${{ steps.strings.outputs.build-output-dir }} \
+              -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
+              -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
+              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
     - name: Build
       run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
