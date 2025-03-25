@@ -50,8 +50,8 @@ jobs:
         choco install -y strawberryperl python visualstudio2022buildtools visualstudio2022-workload-vctools ninja cmake git
 
         
-    - name: Install Qt on Ubuntu
-      if: matrix.os == 'ubuntu-latest'
+    - name: Install Qt on Windows
+      if: matrix.os == 'windows-latest'
       run: |
         choco install -y qt5-default --params "'/Path /modules:qtcharts qtscript qtwidgets qtimageformats qtcore qtgui'"
 
