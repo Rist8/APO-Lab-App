@@ -80,19 +80,18 @@ jobs:
         call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x64
         where nmake
 
-    - name: Add nmake to PATH
+    - name: Debug Visual Studio Path
+      if: matrix.os == 'windows-latest'
+      shell: cmd
+      run: vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+
+    - name: Set Visual Studio Path Manually
       if: matrix.os == 'windows-latest'
       shell: bash
       run: |
-        echo "Adding Visual Studio paths..."
-        VS_PATH=$(vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)
+        VS_PATH="C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools"
         echo "VS_PATH=$VS_PATH"
-        if [ -d "$VS_PATH" ]; then
-          echo "$VS_PATH/VC/Tools/MSVC/*/bin/Hostx64/x64" >> $GITHUB_PATH
-        else
-          echo "Visual Studio installation not found!"
-          exit 1
-        fi
+        echo "$VS_PATH/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64" >> $GITHUB_PATH
 
     - name: Debug PATH
       if: matrix.os == 'windows-latest'
