@@ -48,64 +48,13 @@ jobs:
       run: |
         Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
         choco install -y strawberryperl python visualstudio2022buildtools visualstudio2022-workload-vctools ninja cmake git
+
         
-    - name: Install Visual Studio Build Tools
-      if: matrix.os == 'windows-latest'
+    - name: Install Qt on Ubuntu
+      if: matrix.os == 'ubuntu-latest'
       run: |
-        choco install -y visualstudio2022buildtools
-        choco install -y visualstudio2022-workload-vctools
+        choco install -y qt5-default --params "'/Path /modules:qtcharts qtscript qtwidgets qtimageformats qtcore qtgui'"
 
-    - name: Add Visual Studio to PATH
-      if: matrix.os == 'windows-latest'
-      shell: cmd
-      run: |
-         setx PATH "%PATH%;C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64"
-       
-    - name: Set up MSVC environment
-      if: matrix.os == 'windows-latest'
-      shell: cmd
-      run: |
-         call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x64
- 
-    - name: Set Visual Studio Path Manually
-      if: matrix.os == 'windows-latest'
-      shell: bash
-      run: |
-         VS_PATH="C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools"
-         echo "VS_PATH=$VS_PATH"
-         echo "$VS_PATH/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64" >> $GITHUB_PATH
- 
-    - name: Set up MSVC environment and persist to GitHub Actions
-      if: matrix.os == 'windows-latest'
-      shell: cmd
-      run: |
-         call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x64
-         echo "PATH=%PATH%" >> %GITHUB_ENV%
-
-    - name: Download Qt source code on Windows
-      if: matrix.os == 'windows-latest'
-      run: |
-        curl -L -o qt-everywhere-src-5.15.2.zip https://download.qt.io/official_releases/qt/5.15/5.15.2/single/qt-everywhere-src-5.15.2.zip
-        tar -xf qt-everywhere-src-5.15.2.zip
-
-    - name: Configure, Build and Install Qt on Windows
-      if: matrix.os == 'windows-latest'
-      shell: cmd
-      run: |
-        call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x64
-        where nmake
-        cd D:\a\APO-Lab-App\APO-Lab-App\qt-everywhere-src-5.15.2
-        cd qtbase
-        configure.bat -top-level -platform win32-msvc -opensource -confirm-license -release -nomake tests -nomake examples
-        cd ..
-        cd build
-        nmake
-        nmake install || echo "Qt installation failed!" && exit 1
-
-    - name: Debug Qt Installation
-      if: matrix.os == 'windows-latest'
-      shell: cmd
-      run: dir /s /b D:\a\APO-Lab-App\APO-Lab-App\qt-everywhere-src-5.15.2\qtbase\lib\cmake
 
     - name: Install Qt on Ubuntu
       if: matrix.os == 'ubuntu-latest'
@@ -124,18 +73,7 @@ jobs:
         choco install -y opencv
         Move-Item -Path "C:/tools/opencv" -Destination "C:/opencv"
 
-    - name: Configure CMake with Qt on Windows
-      if: matrix.os == 'windows-latest'
-      shell: cmd
-      run: |
-        dir D:\a\APO-Lab-App\APO-Lab-App\qt-everywhere-src-5.15.2\qtbase\lib\cmake
-        set QT_DIR=D:\a\APO-Lab-App\APO-Lab-App\qt-everywhere-src-5.15.2\qtbase\lib\cmake
-        set CMAKE_PREFIX_PATH=D:\a\APO-Lab-App\APO-Lab-App\qt-everywhere-src-5.15.2\qtbase\lib\cmake
-        cmake -B D:\a\APO-Lab-App\APO-Lab-App\build -DCMAKE_CXX_COMPILER=cl -DCMAKE_C_COMPILER=cl -DCMAKE_BUILD_TYPE=Release
-
-
-    - name: Configure CMake on Ubuntu
-      if: matrix.os == 'ubuntu-latest'
+    - name: Configure CMake
       run: |
         cmake -B ${{ steps.strings.outputs.build-output-dir }} -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
