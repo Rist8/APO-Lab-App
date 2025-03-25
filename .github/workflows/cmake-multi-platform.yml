@@ -124,9 +124,9 @@ jobs:
       shell: cmd
       run: |
         call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x64
-        set QT_DIR=C:\Qt\Qt-5.15.2\lib\cmake\Qt5
-        set CMAKE_PREFIX_PATH=C:\Qt\Qt-5.15.2\lib\cmake\Qt5
-        cmake -B D:\a\APO-Lab-App\APO-Lab-App/build -DCMAKE_CXX_COMPILER=cl -DCMAKE_C_COMPILER=cl -DCMAKE_BUILD_TYPE=Release
+        set QT_DIR=D:\a\APO-Lab-App\APO-Lab-App\qt-everywhere-src-5.15.2\lib\cmake\Qt5
+        set CMAKE_PREFIX_PATH=D:\a\APO-Lab-App\APO-Lab-App\qt-everywhere-src-5.15.2\lib\cmake\Qt5
+        cmake -B D:\a\APO-Lab-App\APO-Lab-App\build -DCMAKE_CXX_COMPILER=cl -DCMAKE_C_COMPILER=cl -DCMAKE_BUILD_TYPE=Release
 
 
     - name: Configure CMake on Ubuntu
