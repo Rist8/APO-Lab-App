@@ -49,66 +49,12 @@ jobs:
         Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
         choco install -y strawberryperl python visualstudio2022buildtools visualstudio2022-workload-vctools ninja cmake git
         choco install -y visualstudio2019buildtools # In case you need specific version
-
-    - name: Add Visual Studio to PATH
-      if: matrix.os == 'windows-latest'
-      shell: cmd
-      run: |
-        setx PATH "%PATH%;C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64"
         
     - name: Install Visual Studio Build Tools
       if: matrix.os == 'windows-latest'
       run: |
         choco install -y visualstudio2022buildtools
         choco install -y visualstudio2022-workload-vctools
-
-
-    - name: Add Visual Studio to PATH
-      if: matrix.os == 'windows-latest'
-      shell: cmd
-      run: |
-        setx PATH "%PATH%;C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64"
-        
-    - name: Verify nmake availability
-      if: matrix.os == 'windows-latest'
-      run: where nmake
-      
-    - name: Set up MSVC environment
-      if: matrix.os == 'windows-latest'
-      shell: cmd
-      run: |
-        call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x64
-        where nmake
-
-    - name: Debug Visual Studio Path
-      if: matrix.os == 'windows-latest'
-      shell: cmd
-      run: vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-
-    - name: Set Visual Studio Path Manually
-      if: matrix.os == 'windows-latest'
-      shell: bash
-      run: |
-        VS_PATH="C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools"
-        echo "VS_PATH=$VS_PATH"
-        echo "$VS_PATH/VC/Tools/MSVC/14.29.30133/bin/Hostx64/x64" >> $GITHUB_PATH
-
-    - name: Set up MSVC environment and persist to GitHub Actions
-      if: matrix.os == 'windows-latest'
-      shell: cmd
-      run: |
-        call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x64
-        echo "PATH=%PATH%" >> %GITHUB_ENV%
-
-    - name: Debug PATH
-      if: matrix.os == 'windows-latest'
-      shell: cmd
-      run: echo %GITHUB_ENV%
-
-    - name: Check if nmake is installed
-      if: matrix.os == 'windows-latest'
-      shell: cmd
-      run: where nmake || echo "nmake not found"
 
     - name: Download Qt source code on Windows
       if: matrix.os == 'windows-latest'
