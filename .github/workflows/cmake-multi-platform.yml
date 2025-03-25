@@ -119,7 +119,18 @@ jobs:
         choco install -y opencv
         Move-Item -Path "C:/tools/opencv" -Destination "C:/opencv"
 
-    - name: Configure CMake
+    - name: Configure CMake with Qt on Windows
+      if: matrix.os == 'windows-latest'
+      shell: cmd
+      run: |
+        call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x64
+        set QT_DIR=C:\Qt\Qt-5.15.2\lib\cmake\Qt5
+        set CMAKE_PREFIX_PATH=C:\Qt\Qt-5.15.2\lib\cmake\Qt5
+        cmake -B D:\a\APO-Lab-App\APO-Lab-App/build -DCMAKE_CXX_COMPILER=cl -DCMAKE_C_COMPILER=cl -DCMAKE_BUILD_TYPE=Release
+
+
+    - name: Configure CMake on Ubuntu
+      if: matrix.os == 'ubuntu-latest'
       run: |
         cmake -B ${{ steps.strings.outputs.build-output-dir }} -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
