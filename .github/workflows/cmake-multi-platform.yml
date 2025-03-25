@@ -100,7 +100,12 @@ jobs:
         cd ..
         cd build
         nmake
-        nmake install
+        nmake install || echo "Qt installation failed!" && exit 1
+
+    - name: Debug Qt Installation
+      if: matrix.os == 'windows-latest'
+      shell: cmd
+      run: dir /s /b D:\a\APO-Lab-App\APO-Lab-App\qt-everywhere-src-5.15.2\qtbase\lib\cmake
 
     - name: Install Qt on Ubuntu
       if: matrix.os == 'ubuntu-latest'
@@ -123,9 +128,9 @@ jobs:
       if: matrix.os == 'windows-latest'
       shell: cmd
       run: |
-        dir C:\Qt\Qt-5.15.2\lib\cmake
-        set QT_DIR=C:\Qt\Qt-5.15.2\lib\cmake\Qt5
-        set CMAKE_PREFIX_PATH=C:\Qt\Qt-5.15.2\lib\cmake\Qt5
+        dir D:\a\APO-Lab-App\APO-Lab-App\qt-everywhere-src-5.15.2\qtbase\lib\cmake
+        set QT_DIR=D:\a\APO-Lab-App\APO-Lab-App\qt-everywhere-src-5.15.2\qtbase\lib\cmake
+        set CMAKE_PREFIX_PATH=D:\a\APO-Lab-App\APO-Lab-App\qt-everywhere-src-5.15.2\qtbase\lib\cmake
         cmake -B D:\a\APO-Lab-App\APO-Lab-App\build -DCMAKE_CXX_COMPILER=cl -DCMAKE_C_COMPILER=cl -DCMAKE_BUILD_TYPE=Release
 
 
