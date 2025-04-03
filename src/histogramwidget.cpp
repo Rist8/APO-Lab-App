@@ -17,10 +17,10 @@ void HistogramWidget::computeHistogram(const cv::Mat &grayImage) {
     if (grayImage.empty()) return;
 
     histogramData.fill(0, 256);
-    for (int y = 0; y < grayImage.rows; y++) {
-        for (int x = 0; x < grayImage.cols; x++) {
+    for (int y = 0; y < grayImage.rows; ++y) {
+        for (int x = 0; x < grayImage.cols; ++x) {
             int pixelValue = grayImage.at<uchar>(y, x);
-            histogramData[pixelValue]++;
+            ++histogramData[pixelValue];
         }
     }
 
