@@ -1,4 +1,3 @@
-// mainwindow.cpp
 #include "mainwindow.h"
 #include "imageviewer.h"
 #include <QVBoxLayout>
@@ -68,10 +67,12 @@ void MainWindow::openImage() {
         cv::Mat image = cv::imdecode(buffer, cv::IMREAD_UNCHANGED);
         if (!image.empty()) {
             ImageViewer *viewer = new ImageViewer(image, filePath, nullptr, QPoint(100,100), this);
+            openedImages.push_back(viewer);
             viewer->show();
         }
     }
 }
+
 
 void MainWindow::showInfo() {
     QMessageBox::information(this, "About",

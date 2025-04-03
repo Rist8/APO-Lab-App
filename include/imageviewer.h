@@ -21,8 +21,13 @@ public:
     explicit ImageViewer(const cv::Mat &image, const QString &title, QWidget *parent = nullptr,
                          QPoint position = QPoint(100, 100), MainWindow *mainWindow = nullptr);
 
+    cv::Mat getOriginalImage() const { return originalImage; }
+    MainWindow* getMainWindow() const { return mainWindow; }
+    void setZoom(double scale) { currentScale = scale; updateImage(); }
+
 protected:
     void wheelEvent(QWheelEvent *event) override;
+    void closeEvent(QCloseEvent *event) override;
 
 private:
     QLabel *imageLabel;
@@ -55,6 +60,9 @@ private:
     QAction *cannyEdgeAction;
     QAction *prewittEdgeAction;
     QAction *customFilterAction;
+    QAction *medianFilterAction;
+    QAction *bitwiseOperationAction;
+    QAction *twoStepFilterAction;
 
     cv::Mat originalImage;
     double currentScale;
@@ -84,7 +92,12 @@ private:
     void applyCannyEdgeDetection();
     void applySharpening(int option);
     void applyPrewittEdgeDetection();
+    void setPrewittDirection(int direction);
     void applyCustomFilter();
+    void applyMedianFilter();
+    void applyBitwiseOperation();
+    void applyTwoStepFilter();
+    cv::Mat applyTwoStepFilterOperation(const cv::Mat& input);
     QImage MatToQImage(const cv::Mat &mat);
 };
 

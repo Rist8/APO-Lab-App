@@ -34,6 +34,8 @@ set(PROJECT_SOURCES
         src/rangestretchingdialog.cpp
         include/customfilterdialog.h
         src/customfilterdialog.cpp
+        include/directionselectiondialog.h
+        src/directionselectiondialog.cpp
 )
 
 
@@ -41,6 +43,8 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
     qt_add_executable(APO-Lab-App
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
+        include/bitwiseoperationdialog.h
+        src/bitwiseoperationdialog.cpp
     )
 # Define target properties for Android with Qt 6 as:
 #    set_property(TARGET APO-Lab-App APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
@@ -86,5 +90,3 @@ install(TARGETS APO-Lab-App
 if(QT_VERSION_MAJOR EQUAL 6)
     qt_finalize_executable(APO-Lab-App)
 endif()
-
-

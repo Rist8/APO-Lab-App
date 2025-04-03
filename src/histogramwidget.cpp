@@ -61,4 +61,3 @@ void HistogramWidget::mouseMoveEvent(QMouseEvent *event) {
     QToolTip::showText(event->globalPos(),
                        QString("Intensity: %1\nCount: %2").arg(binIndex).arg(count), this);
 }
-

@@ -1,6 +1,8 @@
 #include "imageviewer.h"
 #include "rangestretchingdialog.h"
 #include "customfilterdialog.h"
+#include "directionselectiondialog.h"
+#include "bitwiseoperationdialog.h"
 #include <QVBoxLayout>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -167,6 +169,18 @@ void ImageViewer::createMenu() {
     connect(customFilterAction, &QAction::triggered, this, &ImageViewer::applyCustomFilter);
     filterMenu->addAction(customFilterAction);
 
+    medianFilterAction = new QAction("Apply Median Filter", this);
+    connect(medianFilterAction, &QAction::triggered, this, &ImageViewer::applyMedianFilter);
+    filterMenu->addAction(medianFilterAction);
+
+    bitwiseOperationAction = new QAction("Bitwise Operations", this);
+    connect(bitwiseOperationAction, &QAction::triggered, this, &ImageViewer::applyBitwiseOperation);
+    pointOperationsMenu->addAction(bitwiseOperationAction);
+
+    twoStepFilterAction = new QAction("Two-Step Filter (5x5)", this);
+    connect(twoStepFilterAction, &QAction::triggered, this, &ImageViewer::applyTwoStepFilter);
+    filterMenu->addAction(twoStepFilterAction);
+
     // Disable if the image is already grayscale
     if (originalImage.channels() != 1) {
         stretchHistogramAction->setEnabled(false);
@@ -182,6 +196,9 @@ void ImageViewer::createMenu() {
         sharpenMenu->setEnabled(false);
         prewittEdgeAction->setEnabled(false);
         customFilterAction->setEnabled(false);
+        medianFilterAction->setEnabled(false);
+        bitwiseOperationAction->setEnabled(false);
+        twoStepFilterAction->setEnabled(false);
     }
 
     // Add to Menu Bar
@@ -195,7 +212,12 @@ void ImageViewer::createMenu() {
 }
 
 void ImageViewer::duplicateImage() {
-    ImageViewer *newViewer = new ImageViewer(originalImage.clone(), "Duplicate", nullptr, QPoint(200, 200), mainWindow);
+    static int n = 0;
+    ImageViewer *newViewer = new ImageViewer(originalImage.clone(),
+                                             "Duplicate" + QString(std::to_string(n++).c_str()), nullptr,
+                                             QPoint(this->x() + 200, this->y() + 200), mainWindow);
+    mainWindow->openedImages.push_back(newViewer);
+    newViewer->setZoom(currentScale);
     newViewer->show();
 }
 
@@ -283,6 +305,9 @@ void ImageViewer::convertToGrayscale() {
         sharpenMenu->setEnabled(true);
         prewittEdgeAction->setEnabled(true);
         customFilterAction->setEnabled(true);
+        medianFilterAction->setEnabled(true);
+        bitwiseOperationAction->setEnabled(true);
+        twoStepFilterAction->setEnabled(true);
         updateImage();
     }
 }
@@ -581,8 +606,61 @@ void ImageViewer::applySharpening(int option) {
 }
 
 void ImageViewer::applyPrewittEdgeDetection() {
-    cv::Mat kernelX = (cv::Mat_<float>(3,3) << -1, 0, 1, -1, 0, 1, -1, 0, 1);
-    cv::filter2D(originalImage, originalImage, -1, kernelX, cv::Point(-1, -1), 0, mainWindow->getBorderOption());
+    DirectionSelectionDialog dialog(this);
+    connect(&dialog, &DirectionSelectionDialog::directionSelected, this, &ImageViewer::setPrewittDirection);
+    dialog.exec();
+}
+
+void ImageViewer::setPrewittDirection(int direction) {
+    cv::Mat kernel;
+    switch (direction) {
+    case 0: // Top-left ↖
+        kernel = (cv::Mat_<float>(3,3) << -1, -1, 0,
+                  -1,  0, 1,
+                  0,  1, 1);
+        break;
+    case 1: // Up ↑
+        kernel = (cv::Mat_<float>(3,3) << -1, -1, -1,
+                  0,  0,  0,
+                  1,  1,  1);
+        break;
+    case 2: // Top-right ↗
+        kernel = (cv::Mat_<float>(3,3) <<  0, -1, -1,
+                  1,  0, -1,
+                  1,  1,  0);
+        break;
+    case 3: // Left ←
+        kernel = (cv::Mat_<float>(3,3) << -1,  0,  1,
+                  -1,  0,  1,
+                  -1,  0,  1);
+        break;
+    case 5: // Right →
+        kernel = (cv::Mat_<float>(3,3) <<  1,  0, -1,
+                  1,  0, -1,
+                  1,  0, -1);
+        break;
+    case 6: // Bottom-left ↙
+        kernel = (cv::Mat_<float>(3,3) <<  0,  1,  1,
+                  -1,  0,  1,
+                  -1, -1,  0);
+        break;
+    case 7: // Down ↓
+        kernel = (cv::Mat_<float>(3,3) <<  1,  1,  1,
+                  0,  0,  0,
+                  -1, -1, -1);
+        break;
+    case 8: // Bottom-right ↘
+        kernel = (cv::Mat_<float>(3,3) <<  1,  1,  0,
+                  1,  0, -1,
+                  0, -1, -1);
+        break;
+    }
+
+    if (!originalImage.empty()) {
+        cv::Mat result;
+        cv::filter2D(originalImage, result, -1, kernel, cv::Point(-1, -1), 0, mainWindow->getBorderOption());
+        originalImage = result;
+    }
     updateImage();
 }
 
@@ -595,6 +673,75 @@ void ImageViewer::applyCustomFilter() {
     }
 }
 
+// Custom Median Filtering (from scratch) with Border Handling
+cv::Mat applyCustomMedianFilter(const cv::Mat &image, int kernelSize, int borderType) {
+    cv::Mat result;
+    cv::copyMakeBorder(image, result, kernelSize / 2, kernelSize / 2, kernelSize / 2, kernelSize / 2, borderType);
+    cv::Mat filtered = result.clone();
+    int border = kernelSize / 2;
+    for (int y = border; y < result.rows - border; ++y) {
+        for (int x = border; x < result.cols - border; ++x) {
+            std::vector<uchar> neighbors;
+            for (int ky = -border; ky <= border; ++ky) {
+                for (int kx = -border; kx <= border; ++kx) {
+                    neighbors.push_back(result.at<uchar>(y + ky, x + kx));
+                }
+            }
+            std::nth_element(neighbors.begin(), neighbors.begin() + neighbors.size() / 2, neighbors.end());
+            filtered.at<uchar>(y, x) = neighbors[neighbors.size() / 2];
+        }
+    }
+    return filtered(cv::Rect(border, border, image.cols, image.rows));
+}
+
+void ImageViewer::applyMedianFilter() {
+    bool ok;
+    int kernelSize = QInputDialog::getInt(this, "Select Kernel Size", "Kernel Size (3, 5, 7):", 3, 3, 7, 2, &ok);
+    if (!ok) return;
+
+    int borderType = mainWindow->getBorderOption();
+    originalImage = applyCustomMedianFilter(originalImage, kernelSize, borderType);
+    updateImage();
+}
+
+void ImageViewer::applyBitwiseOperation() {
+    if (originalImage.empty()) return;
+
+    BitwiseOperationDialog dialog(this, mainWindow->openedImages);
+    if (dialog.exec() == QDialog::Accepted) {
+        originalImage = dialog.getResult();
+        updateImage();
+    }
+}
+
+void ImageViewer::closeEvent(QCloseEvent *event){
+    mainWindow->openedImages.removeIf([this](QWidget* iv){ return qobject_cast<ImageViewer*>(iv) == this; });
+}
+
+void ImageViewer::applyTwoStepFilter() {
+    if (originalImage.empty()) return;
+
+    originalImage = applyTwoStepFilterOperation(originalImage);
+    updateImage();
+}
+
+cv::Mat ImageViewer::applyTwoStepFilterOperation(const cv::Mat& input) {
+    if (input.empty()) return input;
+
+    // Combined 5x5 kernel
+    cv::Mat combined5x5 = (cv::Mat_<float>(5,5) <<
+                               0,  -1/20.0f,  -2/20.0f,  -1/20.0f,  0,
+                           -1/20.0f, -2/20.0f,  7/20.0f, -2/20.0f, -1/20.0f,
+                           -2/20.0f,  7/20.0f, 16/20.0f,  7/20.0f, -2/20.0f,
+                           -1/20.0f, -2/20.0f,  7/20.0f, -2/20.0f, -1/20.0f,
+                           0,  -1/20.0f,  -2/20.0f,  -1/20.0f,  0);
+
+    // Apply combined 5x5 filter
+    cv::Mat direct5x5Result;
+    cv::filter2D(input, direct5x5Result, -1, combined5x5, cv::Point(-1,-1), 0, mainWindow->getBorderOption());
+
+    return direct5x5Result;
+}
 
 QImage ImageViewer::MatToQImage(const cv::Mat &mat) {
     if (mat.type() == CV_8UC3) {
@@ -606,6 +753,3 @@ QImage ImageViewer::MatToQImage(const cv::Mat &mat) {
     }
     return QImage(); // Invalid image
 }
-
-
-
