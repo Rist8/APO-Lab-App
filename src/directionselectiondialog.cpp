@@ -1,4 +1,4 @@
-#include "DirectionSelectionDialog.h"
+#include "directionselectiondialog.h"
 
 DirectionSelectionDialog::DirectionSelectionDialog(QWidget *parent) : QDialog(parent) {
     setWindowTitle("Select Edge Detection Direction");
