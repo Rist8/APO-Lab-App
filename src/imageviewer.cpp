@@ -715,7 +715,7 @@ void ImageViewer::applyBitwiseOperation() {
 }
 
 void ImageViewer::closeEvent(QCloseEvent *event){
-    mainWindow->openedImages.erase(std::removeif(mainWindow->openedImages.begin(), mainWindow->openedImages.end(),[this](QWidget* iv){ return qobject_cast<ImageViewer*>(iv) == this; }));
+    mainWindow->openedImages.erase(std::remove_if(mainWindow->openedImages.begin(), mainWindow->openedImages.end(),[this](QWidget* iv){ return qobject_cast<ImageViewer*>(iv) == this; }));
 }
 
 void ImageViewer::applyTwoStepFilter() {
