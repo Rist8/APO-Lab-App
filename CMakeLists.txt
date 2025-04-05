@@ -23,6 +23,7 @@ link_directories(${Qt5Widgets_LIBRARY_DIRS})
 
 
 set(PROJECT_SOURCES
+<<<<<<< HEAD
     src/main.cpp
     src/mainwindow.cpp
     include/mainwindow.h
@@ -38,6 +39,23 @@ set(PROJECT_SOURCES
     src/directionselectiondialog.cpp
     include/bitwiseoperationdialog.h
     src/bitwiseoperationdialog.cpp
+=======
+        src/main.cpp
+        src/mainwindow.cpp
+        include/mainwindow.h
+        src/imageviewer.cpp
+        include/imageviewer.h
+        include/histogramwidget.h
+        src/histogramwidget.cpp
+        include/rangestretchingdialog.h
+        src/rangestretchingdialog.cpp
+        include/customfilterdialog.h
+        src/customfilterdialog.cpp
+        include/directionselectiondialog.h
+        src/directionselectiondialog.cpp
+        include/bitwiseoperationdialog.h
+        src/bitwiseoperationdialog.cpp
+>>>>>>> e4596b5042c16cdde8319d1f64963eb71eb6a354
 )
 
 
