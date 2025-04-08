@@ -26,6 +26,8 @@ set(PROJECT_SOURCES
     src/main.cpp
     src/mainwindow.cpp
     include/mainwindow.h
+    include/imageoperation.h
+    src/imageoperation.cpp
     src/imageviewer.cpp
     include/imageviewer.h
     include/histogramwidget.h

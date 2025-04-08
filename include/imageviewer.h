@@ -13,6 +13,7 @@
 #include <QPixmap>
 #include "histogramwidget.h"
 #include "mainwindow.h"
+#include "imageoperation.h"
 
 class ImageViewer : public QWidget {
     Q_OBJECT
@@ -39,30 +40,10 @@ private:
     QMenuBar *menuBar;
 
     QMenu *sharpenMenu;
-    QAction *duplicateAction;
-    QAction *saveAsAction;
-    QAction *sharpenBasic;
-    QAction *sharpenStrong;
-    QAction *sharpenEdge;
-    QAction *histogramAction;
-    QAction *convertToGrayscaleAction;
-    QAction *splitChannelsAction;
-    QAction *convertToHSVLabAction;
-    QAction *stretchHistogramAction;
-    QAction *equalizeHistogramAction;
-    QAction *negationAction;
-    QAction *rangeStretchingAction;
-    QAction *posterizationAction;
-    QAction *blurAction;
-    QAction *gaussianBlurAction;
-    QAction *sobelEdgeAction;
-    QAction *laplacianEdgeAction;
-    QAction *cannyEdgeAction;
-    QAction *prewittEdgeAction;
-    QAction *customFilterAction;
-    QAction *medianFilterAction;
-    QAction *bitwiseOperationAction;
-    QAction *twoStepFilterAction;
+    QAction* histogramAction;
+    QList<ImageOperation*> operationsList;
+    void registerOperation(ImageOperation *op);
+    void updateOperationsEnabledState();
 
     cv::Mat originalImage;
     double currentScale;

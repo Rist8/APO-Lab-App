@@ -11,6 +11,7 @@
 ImageViewer::ImageViewer(const cv::Mat &image, const QString &title, QWidget *parent, QPoint position, MainWindow *mainWindow)
     : QWidget(parent), originalImage(image), currentScale(1.0f), histogramWidget(nullptr), mainWindow(mainWindow) {
 
+    mainWindow->openedImages.push_back(this);
     LUT = new QTableWidget(this);
     LUT->setEditTriggers(QAbstractItemView::NoEditTriggers);
     LUT->setMinimumHeight(64);
@@ -62,14 +63,43 @@ ImageViewer::ImageViewer(const cv::Mat &image, const QString &title, QWidget *pa
     updateImage();
 }
 
+void ImageViewer::registerOperation(ImageOperation *op) {
+    operationsList.append(op);
+}
+
+void ImageViewer::updateOperationsEnabledState() {
+    ImageOperation::ImageType type = (originalImage.channels() == 1)
+    ? ImageOperation::Grayscale
+    : ImageOperation::Color;
+
+    for (ImageOperation* op : operationsList) {
+        op->updateActionState(type);
+    }
+}
+
 void ImageViewer::createMenu() {
     menuBar = new QMenuBar(this);
+
     QMenu *fileMenu = new QMenu("File", this);
     QMenu *viewMenu = new QMenu("View", this);
     QMenu *imageProcessingMenu = new QMenu("Image Processing", this);
     QMenu *histogramMenu = new QMenu("Histogram Operations", this);
     QMenu *pointOperationsMenu = new QMenu("Point Operations", this);
     QMenu *filterMenu = new QMenu("Filter Operations", this);
+    QMenu *sharpenMenu = new QMenu("Apply Sharpening", this);
+
+    // File Menu
+    auto duplicateOp = new ImageOperation("Duplicate", this, fileMenu,
+                                          ImageOperation::Color | ImageOperation::Grayscale,
+                                          [this]() { this->duplicateImage(); });
+    duplicateOp->getAction()->setShortcut(QKeySequence("Ctrl+Shift+D"));
+    registerOperation(duplicateOp);
+
+    auto saveAsOp = new ImageOperation("Save As", this, fileMenu,
+                                       ImageOperation::Color | ImageOperation::Grayscale,
+                                       [this]() { this->saveImageAs(); });
+    saveAsOp->getAction()->setShortcut(QKeySequence("Ctrl+S"));
+    registerOperation(saveAsOp);
 
     // View Menu
     histogramAction = new QAction("Histogram", this);
@@ -77,131 +107,82 @@ void ImageViewer::createMenu() {
     connect(histogramAction, &QAction::toggled, this, &ImageViewer::toggleHistogram);
     viewMenu->addAction(histogramAction);
 
-    duplicateAction = new QAction("Duplicate", this);
-    duplicateAction->setShortcut(QKeySequence("Ctrl+Shift+D"));
-    connect(duplicateAction, &QAction::triggered, this, &ImageViewer::duplicateImage);
-    fileMenu->addAction(duplicateAction);
-
-    saveAsAction = new QAction("Save As", this);
-    saveAsAction->setShortcut(QKeySequence("Ctrl+S"));
-    connect(saveAsAction, &QAction::triggered, this, &ImageViewer::saveImageAs);
-    fileMenu->addAction(saveAsAction);
-
-    QAction *toggleHistogramTableAction = new QAction("Show LUT", this);
-    toggleHistogramTableAction->setCheckable(true);
-    connect(toggleHistogramTableAction, &QAction::toggled, this, &ImageViewer::toggleLUT);
-    viewMenu->addAction(toggleHistogramTableAction);
+    auto lutToggleOp = new ImageOperation("Show LUT", this, viewMenu,
+                                          ImageOperation::Grayscale,
+                                          [this]() { this->toggleLUT(); }, true);
+    registerOperation(lutToggleOp);
 
     // Image Processing Menu
-    convertToGrayscaleAction = new QAction("Convert to Grayscale", this);
-    connect(convertToGrayscaleAction, &QAction::triggered, this, &ImageViewer::convertToGrayscale);
-    imageProcessingMenu->addAction(convertToGrayscaleAction);
+    registerOperation(new ImageOperation("Convert to Grayscale", this, imageProcessingMenu,
+                                         ImageOperation::Color, [this]() { this->convertToGrayscale(); }));
 
-    splitChannelsAction = new QAction("Split Color Channels", this);
-    connect(splitChannelsAction, &QAction::triggered, this, &ImageViewer::splitColorChannels);
-    imageProcessingMenu->addAction(splitChannelsAction);
+    registerOperation(new ImageOperation("Split Color Channels", this, imageProcessingMenu,
+                                         ImageOperation::Color, [this]() { this->splitColorChannels(); }));
 
-    convertToHSVLabAction = new QAction("Convert to HSV/Lab", this);
-    connect(convertToHSVLabAction, &QAction::triggered, this, &ImageViewer::convertToHSVLab);
-    imageProcessingMenu->addAction(convertToHSVLabAction);
+    registerOperation(new ImageOperation("Convert to HSV/Lab", this, imageProcessingMenu,
+                                         ImageOperation::Color, [this]() { this->convertToHSVLab(); }));
 
     // Histogram Menu
-    stretchHistogramAction = new QAction("Stretch Histogram", this);
-    connect(stretchHistogramAction, &QAction::triggered, this, &ImageViewer::stretchHistogram);
-    histogramMenu->addAction(stretchHistogramAction);
+    registerOperation(new ImageOperation("Stretch Histogram", this, histogramMenu,
+                                         ImageOperation::Grayscale, [this]() { this->stretchHistogram(); }));
 
-    equalizeHistogramAction = new QAction("Equalize Histogram", this);
-    connect(equalizeHistogramAction, &QAction::triggered, this, &ImageViewer::equalizeHistogram);
-    histogramMenu->addAction(equalizeHistogramAction);
+    registerOperation(new ImageOperation("Equalize Histogram", this, histogramMenu,
+                                         ImageOperation::Grayscale, [this]() { this->equalizeHistogram(); }));
 
-    // Point Operations Menu
-    negationAction = new QAction("Apply Negation", this);
-    connect(negationAction, &QAction::triggered, this, &ImageViewer::applyNegation);
-    pointOperationsMenu->addAction(negationAction);
+    // Point Operations
+    registerOperation(new ImageOperation("Apply Negation", this, pointOperationsMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyNegation(); }));
 
-    rangeStretchingAction = new QAction("Range Stretching", this);
-    connect(rangeStretchingAction, &QAction::triggered, this, &ImageViewer::rangeStretching);
-    pointOperationsMenu->addAction(rangeStretchingAction);
+    registerOperation(new ImageOperation("Range Stretching", this, pointOperationsMenu,
+                                         ImageOperation::Grayscale, [this]() { this->rangeStretching(); }));
 
-    posterizationAction = new QAction("Apply Posterization", this);
-    connect(posterizationAction, &QAction::triggered, this, &ImageViewer::applyPosterization);
-    pointOperationsMenu->addAction(posterizationAction);
+    registerOperation(new ImageOperation("Apply Posterization", this, pointOperationsMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyPosterization(); }));
 
-    blurAction = new QAction("Apply Blur", this);
-    connect(blurAction, &QAction::triggered, this, &ImageViewer::applyBlur);
-    filterMenu->addAction(blurAction);
+    registerOperation(new ImageOperation("Bitwise Operations", this, pointOperationsMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyBitwiseOperation(); }));
 
-    gaussianBlurAction = new QAction("Apply Gaussian Blur", this);
-    connect(gaussianBlurAction, &QAction::triggered, this, &ImageViewer::applyGaussianBlur);
-    filterMenu->addAction(gaussianBlurAction);
+    // Filter Menu
+    registerOperation(new ImageOperation("Apply Blur", this, filterMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyBlur(); }));
 
-    sobelEdgeAction = new QAction("Sobel Edge Detection", this);
-    connect(sobelEdgeAction, &QAction::triggered, this, &ImageViewer::applySobelEdgeDetection);
-    filterMenu->addAction(sobelEdgeAction);
+    registerOperation(new ImageOperation("Apply Gaussian Blur", this, filterMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyGaussianBlur(); }));
 
-    laplacianEdgeAction = new QAction("Laplacian Edge Detection", this);
-    connect(laplacianEdgeAction, &QAction::triggered, this, &ImageViewer::applyLaplacianEdgeDetection);
-    filterMenu->addAction(laplacianEdgeAction);
+    registerOperation(new ImageOperation("Sobel Edge Detection", this, filterMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applySobelEdgeDetection(); }));
 
-    cannyEdgeAction = new QAction("Canny Edge Detection", this);
-    connect(cannyEdgeAction, &QAction::triggered, this, &ImageViewer::applyCannyEdgeDetection);
-    filterMenu->addAction(cannyEdgeAction);
+    registerOperation(new ImageOperation("Laplacian Edge Detection", this, filterMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyLaplacianEdgeDetection(); }));
 
-    sharpenMenu = new QMenu("Apply Sharpening", this);
-    sharpenBasic = new QAction("Basic Sharpening", this);
-    sharpenStrong = new QAction("Strong Sharpening", this);
-    sharpenEdge = new QAction("Edge Enhancement", this);
+    registerOperation(new ImageOperation("Canny Edge Detection", this, filterMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyCannyEdgeDetection(); }));
 
-    connect(sharpenBasic, &QAction::triggered, this, [this]() { applySharpening(1); });
-    connect(sharpenStrong, &QAction::triggered, this, [this]() { applySharpening(2); });
-    connect(sharpenEdge, &QAction::triggered, this, [this]() { applySharpening(3); });
+    // Sharpen Submenu
+    registerOperation(new ImageOperation("Basic Sharpening", this, sharpenMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applySharpening(1); }));
 
-    sharpenMenu->addAction(sharpenBasic);
-    sharpenMenu->addAction(sharpenStrong);
-    sharpenMenu->addAction(sharpenEdge);
-    filterMenu->addMenu(sharpenMenu);
+    registerOperation(new ImageOperation("Strong Sharpening", this, sharpenMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applySharpening(2); }));
 
-    prewittEdgeAction = new QAction("Prewitt Edge Detection", this);
-    connect(prewittEdgeAction, &QAction::triggered, this, &ImageViewer::applyPrewittEdgeDetection);
-    filterMenu->addAction(prewittEdgeAction);
+    registerOperation(new ImageOperation("Edge Enhancement", this, sharpenMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applySharpening(3); }));
 
-    customFilterAction = new QAction("Apply Custom Filter", this);
-    connect(customFilterAction, &QAction::triggered, this, &ImageViewer::applyCustomFilter);
-    filterMenu->addAction(customFilterAction);
+    filterMenu->addMenu(sharpenMenu); // Add sharpening menu to filter menu
 
-    medianFilterAction = new QAction("Apply Median Filter", this);
-    connect(medianFilterAction, &QAction::triggered, this, &ImageViewer::applyMedianFilter);
-    filterMenu->addAction(medianFilterAction);
+    registerOperation(new ImageOperation("Prewitt Edge Detection", this, filterMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyPrewittEdgeDetection(); }));
 
-    bitwiseOperationAction = new QAction("Bitwise Operations", this);
-    connect(bitwiseOperationAction, &QAction::triggered, this, &ImageViewer::applyBitwiseOperation);
-    pointOperationsMenu->addAction(bitwiseOperationAction);
+    registerOperation(new ImageOperation("Apply Custom Filter", this, filterMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyCustomFilter(); }));
 
-    twoStepFilterAction = new QAction("Two-Step Filter (5x5)", this);
-    connect(twoStepFilterAction, &QAction::triggered, this, &ImageViewer::applyTwoStepFilter);
-    filterMenu->addAction(twoStepFilterAction);
+    registerOperation(new ImageOperation("Apply Median Filter", this, filterMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyMedianFilter(); }));
 
-    // Disable if the image is already grayscale
-    if (originalImage.channels() != 1) {
-        stretchHistogramAction->setEnabled(false);
-        equalizeHistogramAction->setEnabled(false);
-        negationAction->setEnabled(false);
-        rangeStretchingAction->setEnabled(false);
-        posterizationAction->setEnabled(false);
-        blurAction->setEnabled(false);
-        gaussianBlurAction->setEnabled(false);
-        sobelEdgeAction->setEnabled(false);
-        laplacianEdgeAction->setEnabled(false);
-        cannyEdgeAction->setEnabled(false);
-        sharpenMenu->setEnabled(false);
-        prewittEdgeAction->setEnabled(false);
-        customFilterAction->setEnabled(false);
-        medianFilterAction->setEnabled(false);
-        bitwiseOperationAction->setEnabled(false);
-        twoStepFilterAction->setEnabled(false);
-    }
+    registerOperation(new ImageOperation("Two-Step Filter (5x5)", this, filterMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyTwoStepFilter(); }));
 
-    // Add to Menu Bar
+    // Add menus to bar
     menuBar->addMenu(fileMenu);
     menuBar->addMenu(viewMenu);
     menuBar->addMenu(filterMenu);
@@ -209,14 +190,15 @@ void ImageViewer::createMenu() {
     menuBar->addMenu(histogramMenu);
     menuBar->addMenu(pointOperationsMenu);
     mainLayout->setMenuBar(menuBar);
+    updateOperationsEnabledState();
 }
+
 
 void ImageViewer::duplicateImage() {
     static int n = 0;
     ImageViewer *newViewer = new ImageViewer(originalImage.clone(),
                                              "Duplicate" + QString(std::to_string(n++).c_str()), nullptr,
                                              QPoint(this->x() + 200, this->y() + 200), mainWindow);
-    mainWindow->openedImages.push_back(newViewer);
     newViewer->setZoom(currentScale);
     newViewer->show();
 }
@@ -262,8 +244,8 @@ void ImageViewer::toggleHistogram() {
             // Add container layout to main layout
             mainLayout->addLayout(containerLayout);
         }
-        updateImage();
         updateHistogram();
+        updateImage();
     } else {
         if (histogramWidget) {
             delete histogramWidget;
@@ -289,25 +271,7 @@ void ImageViewer::convertToGrayscale() {
         cv::cvtColor(originalImage, originalImage, cv::COLOR_BGR2GRAY);
 
         // Disable options that no longer apply
-        convertToGrayscaleAction->setEnabled(false);
-        splitChannelsAction->setEnabled(false);
-        convertToHSVLabAction->setEnabled(false);
-        stretchHistogramAction->setEnabled(true);
-        equalizeHistogramAction->setEnabled(true);
-        negationAction->setEnabled(true);
-        rangeStretchingAction->setEnabled(true);
-        posterizationAction->setEnabled(true);
-        blurAction->setEnabled(true);
-        gaussianBlurAction->setEnabled(true);
-        sobelEdgeAction->setEnabled(true);
-        laplacianEdgeAction->setEnabled(true);
-        cannyEdgeAction->setEnabled(true);
-        sharpenMenu->setEnabled(true);
-        prewittEdgeAction->setEnabled(true);
-        customFilterAction->setEnabled(true);
-        medianFilterAction->setEnabled(true);
-        bitwiseOperationAction->setEnabled(true);
-        twoStepFilterAction->setEnabled(true);
+        updateOperationsEnabledState();
         updateImage();
     }
 }
@@ -317,9 +281,9 @@ void ImageViewer::splitColorChannels() {
     cv::split(originalImage, channels);
 
     // Create child windows for each channel
-    (new ImageViewer(channels[0], "Blue Channel", nullptr, QPoint(200, 100)))->show();
-    (new ImageViewer(channels[1], "Green Channel", nullptr, QPoint(300, 100)))->show();
-    (new ImageViewer(channels[2], "Red Channel", nullptr, QPoint(400, 100)))->show();
+    (new ImageViewer(channels[0], "Blue Channel", nullptr, QPoint(200, 100), mainWindow))->show();
+    (new ImageViewer(channels[1], "Green Channel", nullptr, QPoint(300, 100), mainWindow))->show();
+    (new ImageViewer(channels[2], "Red Channel", nullptr, QPoint(400, 100), mainWindow))->show();
 }
 
 void ImageViewer::convertToHSVLab() {
@@ -327,8 +291,8 @@ void ImageViewer::convertToHSVLab() {
     cv::cvtColor(originalImage, hsv, cv::COLOR_BGR2HSV);
     cv::cvtColor(originalImage, lab, cv::COLOR_BGR2Lab);
 
-    (new ImageViewer(hsv, "HSV Image", nullptr, QPoint(200, 100)))->show();
-    (new ImageViewer(lab, "Lab Image", nullptr, QPoint(300, 100)))->show();
+    (new ImageViewer(hsv, "HSV Image", nullptr, QPoint(200, 100), mainWindow))->show();
+    (new ImageViewer(lab, "Lab Image", nullptr, QPoint(300, 100), mainWindow))->show();
 }
 
 // Histogram Operations
@@ -438,13 +402,13 @@ void ImageViewer::updateImage() {
 
     if(!isMaximized()){
         // Resize the window to match the image, but ensure a minimum size
-        //resize(qMax(newWidth + 20, 200), qMax(newHeight + 50, 200));
+        resize(qMax(newWidth + 20, 200), qMax(newHeight + 50, 200));
         adjustSize();
     }
 
     if (histogramWidget && histogramWidget->isVisible()) {
 
-        histogramWidget->setMinimumWidth(qBound(276, newWidth - (newWidth % 256) + 20, 1044));
+        histogramWidget->setMinimumWidth(qBound(276, newWidth + 20, 1044));
         updateHistogram();  // Ensure histogram updates dynamically
     }
 

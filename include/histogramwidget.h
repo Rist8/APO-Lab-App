@@ -18,6 +18,7 @@ protected:
     void mouseMoveEvent(QMouseEvent *event) override;
 
 private:
+    int hoveredBin = -1;
     QVector<int> histogramData;
     int maxHistogramValue;
     QTableWidget *histogramTable;
