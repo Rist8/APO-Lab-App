@@ -632,6 +632,10 @@ void ImageViewer::applyCustomFilter() {
     CustomFilterDialog dialog(this);
     if (dialog.exec() == QDialog::Accepted) {
         cv::Mat kernel = dialog.getKernel();
+        double sum = cv::sum(kernel)[0];
+        if (sum != 0) {
+            kernel /= sum;  // Normalize the kernel
+        }
         cv::filter2D(originalImage, originalImage, -1, kernel, cv::Point(-1, -1), 0, mainWindow->getBorderOption());
         updateImage();
     }
