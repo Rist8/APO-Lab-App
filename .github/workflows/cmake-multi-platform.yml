@@ -55,15 +55,13 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       uses: actions/cache@v3
       with:
-        path: |
-          /var/cache/apt/archives/*.deb
+        path: $HOME/aptcache
         key: ubuntu-apt-${{ matrix.os }}-${{ matrix.c_compiler }}-${{ matrix.build_type }}-${{ hashFiles('.github/workflows/**') }}
         restore-keys: |
           ubuntu-apt-${{ matrix.os }}-${{ matrix.c_compiler }}-${{ matrix.build_type }}-
           ubuntu-apt-${{ matrix.os }}-${{ matrix.c_compiler }}-
           ubuntu-apt-${{ matrix.os }}-
           ubuntu-apt-
-
 
     - name: Install dependencies on Windows
       if: matrix.os == 'windows-latest'
@@ -82,16 +80,21 @@ jobs:
       run: |
         aqt install-qt windows desktop 5.15.2 win64_msvc2019_64
 
-    - name: Install Qt on Ubuntu
+    - name: Restore cached APT .deb files
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        if [ -d "$HOME/aptcache" ]; then
+          sudo cp $HOME/aptcache/*.deb /var/cache/apt/archives/ || true
+        fi
+
+    - name: Install dependencies and copy APT cache on Ubuntu
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools
+        sudo apt-get install -y qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools libopencv-dev
+        mkdir -p $HOME/aptcache
+        sudo cp /var/cache/apt/archives/*.deb $HOME/aptcache || true
 
-    - name: Install OpenCV on Ubuntu
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        sudo apt-get install -y libopencv-dev
 
     - name: Cache OpenCV binaries (Windows)
       if: matrix.os == 'windows-latest'
