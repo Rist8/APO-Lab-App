@@ -21,7 +21,7 @@ private slots:
 private:
     QComboBox *kernelSizeBox;
     QGridLayout *kernelLayout;
-    QVector<QVector<QSpinBox*>> kernelInputs;
+    QVector<QVector<QDoubleSpinBox*>> kernelInputs;
 };
 
 #endif // CUSTOMFILTERDIALOG_H

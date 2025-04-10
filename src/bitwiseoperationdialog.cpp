@@ -86,9 +86,22 @@ void BitwiseOperationDialog::performOperation() {
     cv::Mat img1 = currentViewer->getOriginalImage();
     cv::Mat img2 = secondViewer->getOriginalImage();
 
-    // Convert to same size if needed
+    // Handle different sizes
     if (img1.size() != img2.size()) {
-        cv::resize(img2, img2, img1.size());
+        int response = QMessageBox::question(
+            this,
+            "Resize Image",
+            "The images are of different sizes. Do you want to automatically resize the second image to match the first?",
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No
+            );
+
+        if (response == QMessageBox::Yes) {
+            cv::resize(img2, img2, img1.size());
+        } else {
+            QMessageBox::information(this, "Operation Cancelled", "Bitwise operation was cancelled due to size mismatch.");
+            return;
+        }
     }
 
     QString operation = operationCombo->currentText();
@@ -119,3 +132,4 @@ void BitwiseOperationDialog::performOperation() {
         resultImage.release();
     }
 }
+

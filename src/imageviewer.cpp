@@ -1,6 +1,7 @@
 #include "imageviewer.h"
 #include "rangestretchingdialog.h"
 #include "customfilterdialog.h"
+#include "twostepfilterdialog.h"
 #include "directionselectiondialog.h"
 #include "bitwiseoperationdialog.h"
 #include <QVBoxLayout>
@@ -664,8 +665,13 @@ cv::Mat applyCustomMedianFilter(const cv::Mat &image, int kernelSize, int border
 
 void ImageViewer::applyMedianFilter() {
     bool ok;
-    int kernelSize = QInputDialog::getInt(this, "Select Kernel Size", "Kernel Size (3, 5, 7):", 3, 3, 7, 2, &ok);
+    QStringList kernelOptions;
+    kernelOptions << "3" << "5" << "7";
+
+    QString selected = QInputDialog::getItem(this, "Select Kernel Size", "Kernel Size:", kernelOptions, 0, false, &ok);
     if (!ok) return;
+
+    int kernelSize = selected.toInt();
 
     int borderType = mainWindow->getBorderOption();
     originalImage = applyCustomMedianFilter(originalImage, kernelSize, borderType);
@@ -696,19 +702,24 @@ void ImageViewer::applyTwoStepFilter() {
 cv::Mat ImageViewer::applyTwoStepFilterOperation(const cv::Mat& input) {
     if (input.empty()) return input;
 
-    // Combined 5x5 kernel
-    cv::Mat combined5x5 = (cv::Mat_<float>(5,5) <<
-                               0,  -1/20.0f,  -2/20.0f,  -1/20.0f,  0,
-                           -1/20.0f, -2/20.0f,  7/20.0f, -2/20.0f, -1/20.0f,
-                           -2/20.0f,  7/20.0f, 16/20.0f,  7/20.0f, -2/20.0f,
-                           -1/20.0f, -2/20.0f,  7/20.0f, -2/20.0f, -1/20.0f,
-                           0,  -1/20.0f,  -2/20.0f,  -1/20.0f,  0);
+    // Open the filter configuration dialog
+    TwoStepFilterDialog filterDialog;
+    if (filterDialog.exec() != QDialog::Accepted)
+        return input; // Return unchanged if user cancels
 
-    // Apply combined 5x5 filter
-    cv::Mat direct5x5Result;
-    cv::filter2D(input, direct5x5Result, -1, combined5x5, cv::Point(-1,-1), 0, mainWindow->getBorderOption());
+    // Get the two user-defined 3x3 kernels
+    cv::Mat kernel1 = filterDialog.getKernel1();
+    cv::Mat kernel2 = filterDialog.getKernel2();
 
-    return direct5x5Result;
+    // Compute the equivalent 5x5 kernel
+    cv::Mat combined5x5 = filterDialog.getKernel3();
+    combined5x5 /= cv::sum(combined5x5)[0];
+
+    // Apply the computed 5x5 kernel
+    cv::Mat result;
+    cv::filter2D(input, result, -1, combined5x5, cv::Point(-1, -1), 0, mainWindow->getBorderOption());
+
+    return result;
 }
 
 QImage ImageViewer::MatToQImage(const cv::Mat &mat) {

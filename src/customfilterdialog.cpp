@@ -50,15 +50,16 @@ void CustomFilterDialog::updateKernelSize() {
 
     int size = kernelSizeBox->currentText().split("x")[0].toInt();
     kernelInputs.clear();
-    int spinBoxSize = (size > 5) ? 50 : 60; // Increase size for better visibility
+    int spinBoxSize = (size > 5) ? 75 : 85; // Increase size for better visibility
 
     for (int i = 0; i < size; i++) {
-        QVector<QSpinBox*> row;
+        QVector<QDoubleSpinBox*> row;
         for (int j = 0; j < size; j++) {
-            QSpinBox *spinBox = new QSpinBox(this);
-            spinBox->setRange(-10, 10);
+            QDoubleSpinBox *spinBox = new QDoubleSpinBox(this);
+            spinBox->setRange(-99.99, 99.99);
+            spinBox->setDecimals(2);  // or more if needed
             spinBox->setValue(0);
-            spinBox->setFixedSize(spinBoxSize, spinBoxSize);
+            spinBox->setFixedSize(spinBoxSize, 45);
             spinBox->setAlignment(Qt::AlignCenter); // Ensure text is centered
             kernelLayout->addWidget(spinBox, i, j);
             row.append(spinBox);

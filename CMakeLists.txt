@@ -36,6 +36,8 @@ set(PROJECT_SOURCES
     src/rangestretchingdialog.cpp
     include/customfilterdialog.h
     src/customfilterdialog.cpp
+    include/twostepfilterdialog.h
+    src/twostepfilterdialog.cpp
     include/directionselectiondialog.h
     src/directionselectiondialog.cpp
     include/bitwiseoperationdialog.h
