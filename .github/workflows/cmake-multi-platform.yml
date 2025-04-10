@@ -57,9 +57,13 @@ jobs:
       with:
         path: |
           /var/cache/apt/archives/*.deb
-        key: ubuntu-apt-${{ hashFiles('.github/workflows/**') }}
+        key: ubuntu-apt-${{ matrix.os }}-${{ matrix.c_compiler }}-${{ matrix.build_type }}-${{ hashFiles('.github/workflows/**') }}
         restore-keys: |
+          ubuntu-apt-${{ matrix.os }}-${{ matrix.c_compiler }}-${{ matrix.build_type }}-
+          ubuntu-apt-${{ matrix.os }}-${{ matrix.c_compiler }}-
+          ubuntu-apt-${{ matrix.os }}-
           ubuntu-apt-
+
 
     - name: Install dependencies on Windows
       if: matrix.os == 'windows-latest'
