@@ -3,6 +3,7 @@
 
 #include <QWidget>
 #include <QLabel>
+#include <stack>
 #include <QVBoxLayout>
 #include <QWheelEvent>
 #include <QMenu>
@@ -15,6 +16,11 @@
 #include "mainwindow.h"
 #include "imageoperation.h"
 
+enum StructuringElementType {
+    Diamond,
+    Square
+};
+
 class ImageViewer : public QWidget {
     Q_OBJECT
 
@@ -25,6 +31,10 @@ public:
     cv::Mat getOriginalImage() const { return originalImage; }
     MainWindow* getMainWindow() const { return mainWindow; }
     void setZoom(double scale) { currentScale = scale; updateImage(); }
+
+    void undo();
+    void redo();
+    void pushToUndoStack();  // Call before modifying `originalImage`
 
 protected:
     void wheelEvent(QWheelEvent *event) override;
@@ -46,18 +56,22 @@ private:
     void updateOperationsEnabledState();
 
     cv::Mat originalImage;
+    std::stack<cv::Mat> undoStack;
+    std::stack<cv::Mat> redoStack;
     double currentScale;
 
     void createMenu();
     void duplicateImage();
     void saveImageAs();
     void updateImage();
+    void clearRedoStack(); // Helper
     void updateZoomLabel();
     void setZoomFromInput();
     void updateHistogram();
     void updateHistogramTable();  // Function to update table
     void toggleHistogram();
     void toggleLUT();  // New function to show/hide the table
+    void binarise();
     void convertToGrayscale();
     void splitColorChannels();
     void convertToHSVLab();
@@ -79,7 +93,18 @@ private:
     void applyBitwiseOperation();
     void applyTwoStepFilter();
     cv::Mat applyTwoStepFilterOperation(const cv::Mat& input);
+    cv::Mat getStructuringElement(StructuringElementType type);
+    void applyErosion(StructuringElementType type);
+    void applyDilation(StructuringElementType type);
+    void applyOpening(StructuringElementType type);
+    void applyClosing(StructuringElementType type);
+    void applySkeletonization();
     QImage MatToQImage(const cv::Mat &mat);
+
+    StructuringElementType erosionElement = Diamond;
+    StructuringElementType dilationElement = Diamond;
+    StructuringElementType openingElement = Diamond;
+    StructuringElementType closingElement = Diamond;
 };
 
 #endif // IMAGEVIEWER_H

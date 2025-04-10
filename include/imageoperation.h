@@ -15,7 +15,8 @@ public:
     enum ImageType {
         Grayscale = 0x1,
         Color     = 0x2,
-        All       = Grayscale | Color
+        Binary    = 0x4,
+        All       = Grayscale | Color | Binary
     };
     Q_DECLARE_FLAGS(ImageTypes, ImageType)
 

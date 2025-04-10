@@ -7,7 +7,10 @@
 #include <QVBoxLayout>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QRadioButton>
+#include <QWidgetAction>
 #include <QInputDialog>
+#include <qactiongroup.h>
 
 ImageViewer::ImageViewer(const cv::Mat &image, const QString &title, QWidget *parent, QPoint position, MainWindow *mainWindow)
     : QWidget(parent), originalImage(image), currentScale(1.0f), histogramWidget(nullptr), mainWindow(mainWindow) {
@@ -49,6 +52,7 @@ ImageViewer::ImageViewer(const cv::Mat &image, const QString &title, QWidget *pa
     zoomInput->setAlignment(Qt::AlignRight | Qt::AlignBottom);
     zoomInput->setText(QString::number(static_cast<int>(currentScale * 100)) + "%");
     zoomInput->setMaximumWidth(60);
+    zoomInput->setFocusPolicy(Qt::FocusPolicy::ClickFocus);
     // Use regex to allow numbers with or without a '%' sign (e.g., "150" or "150%")
     QRegularExpression regex(R"(^\d{1,3}%?$)");
     QRegularExpressionValidator *validator = new QRegularExpressionValidator(regex, this);
@@ -69,25 +73,138 @@ void ImageViewer::registerOperation(ImageOperation *op) {
 }
 
 void ImageViewer::updateOperationsEnabledState() {
-    ImageOperation::ImageType type = (originalImage.channels() == 1)
-    ? ImageOperation::Grayscale
-    : ImageOperation::Color;
+    using ImageType = ImageOperation::ImageType;
+
+    ImageType type;
+
+    if (originalImage.channels() == 1) {
+        // Check if only min and max are present
+        double minVal, maxVal;
+        cv::minMaxLoc(originalImage, &minVal, &maxVal);
+
+        // Check if all values are either min or max
+        cv::Mat binaryMask = (originalImage != minVal) & (originalImage != maxVal);
+        int nonBinaryPixels = cv::countNonZero(binaryMask);
+
+        if (nonBinaryPixels == 0) {
+            // It's binary AND grayscale
+            type = ImageType::Binary;
+        } else {
+            type = ImageType::Grayscale;
+        }
+    } else {
+        type = ImageType::Color;
+    }
 
     for (ImageOperation* op : operationsList) {
         op->updateActionState(type);
     }
+
+    histogramAction->setEnabled(type != ImageType::Color);
 }
+
 
 void ImageViewer::createMenu() {
     menuBar = new QMenuBar(this);
 
     QMenu *fileMenu = new QMenu("File", this);
     QMenu *viewMenu = new QMenu("View", this);
-    QMenu *imageProcessingMenu = new QMenu("Image Processing", this);
-    QMenu *histogramMenu = new QMenu("Histogram Operations", this);
-    QMenu *pointOperationsMenu = new QMenu("Point Operations", this);
-    QMenu *filterMenu = new QMenu("Filter Operations", this);
+    QMenu *imageProcessingMenu = new QMenu("Image Type", this);
+    QMenu *histogramMenu = new QMenu("Histogram", this);
+    QMenu *pointOperationsMenu = new QMenu("Point", this);
+    QMenu *filterMenu = new QMenu("Filters", this);
     QMenu *sharpenMenu = new QMenu("Apply Sharpening", this);
+
+    QAction *undoAction = new QAction("Undo", this);
+    QAction *redoAction = new QAction("Redo", this);
+
+    undoAction->setShortcut(QKeySequence("Ctrl+Z"));
+    undoAction->setCheckable(false);
+    redoAction->setShortcut(QKeySequence("Ctrl+Y"));
+    redoAction->setCheckable(false);
+
+    connect(undoAction, &QAction::triggered, this, &ImageViewer::undo);
+    connect(redoAction, &QAction::triggered, this, &ImageViewer::redo);
+
+    fileMenu->addAction(undoAction);
+    fileMenu->addAction(redoAction);
+
+    QMenu *morphologyMenu = new QMenu("Morphology", this);
+
+    // Helper lambda to create element selector submenu
+    auto createElementSelector = [this](QMenu *parentMenu, StructuringElementType &targetVar) {
+        QMenu *elementMenu = new QMenu("Structure", parentMenu);
+
+        QWidget *widget = new QWidget;
+        QVBoxLayout *layout = new QVBoxLayout(widget);
+        layout->setContentsMargins(4, 4, 4, 4);
+
+        QRadioButton *diamondRadio = new QRadioButton("Diamond (4-connected)");
+        QRadioButton *squareRadio = new QRadioButton("Square (8-connected)");
+        diamondRadio->setChecked(true);
+
+        layout->addWidget(diamondRadio);
+        layout->addWidget(squareRadio);
+
+        connect(diamondRadio, &QRadioButton::toggled, this, [&targetVar](bool checked) {
+            if (checked) targetVar = Diamond;
+        });
+        connect(squareRadio, &QRadioButton::toggled, this, [&targetVar](bool checked) {
+            if (checked) targetVar = Square;
+        });
+
+        QWidgetAction *widgetAction = new QWidgetAction(elementMenu);
+        widgetAction->setDefaultWidget(widget);
+        elementMenu->addAction(widgetAction);
+
+        return elementMenu;
+    };
+
+
+    QMenu *erosionMenu = new QMenu("Erosion", this);
+    erosionMenu->addMenu(createElementSelector(erosionMenu, erosionElement));
+    auto erosionOp = new ImageOperation("Apply Erosion", this, erosionMenu,
+                                        ImageOperation::Binary, [this]() {
+                                            this->applyErosion(erosionElement);
+                                        });
+    registerOperation(erosionOp);
+    morphologyMenu->addMenu(erosionMenu);
+
+    // Dilation
+    QMenu *dilationMenu = new QMenu("Dilation", this);
+    dilationMenu->addMenu(createElementSelector(dilationMenu, dilationElement));
+    auto dilationOp = new ImageOperation("Apply Dilation", this, dilationMenu,
+                                         ImageOperation::Binary, [this]() {
+                                             this->applyDilation(dilationElement);
+                                         });
+    registerOperation(dilationOp);
+    morphologyMenu->addMenu(dilationMenu);
+
+    // Opening
+    QMenu *openingMenu = new QMenu("Opening", this);
+    openingMenu->addMenu(createElementSelector(openingMenu, openingElement));
+    auto openingOp = new ImageOperation("Apply Opening", this, openingMenu,
+                                        ImageOperation::Binary, [this]() {
+                                            this->applyOpening(openingElement);
+                                        });
+    registerOperation(openingOp);
+    morphologyMenu->addMenu(openingMenu);
+
+
+    // Closing
+    QMenu *closingMenu = new QMenu("Closing", this);
+    closingMenu->addMenu(createElementSelector(closingMenu, closingElement));
+    auto closingOp = new ImageOperation("Apply Closing", this, closingMenu,
+                                        ImageOperation::Binary, [this]() {
+                                            this->applyClosing(closingElement);
+                                        });
+    registerOperation(closingOp);
+    morphologyMenu->addMenu(closingMenu);
+
+    registerOperation(new ImageOperation("Skeletonize", this, morphologyMenu,
+                                         ImageOperation::Binary,
+                                         [this]() { this->applySkeletonization(); }));
+
 
     // File Menu
     auto duplicateOp = new ImageOperation("Duplicate", this, fileMenu,
@@ -116,6 +233,9 @@ void ImageViewer::createMenu() {
     // Image Processing Menu
     registerOperation(new ImageOperation("Convert to Grayscale", this, imageProcessingMenu,
                                          ImageOperation::Color, [this]() { this->convertToGrayscale(); }));
+
+    registerOperation(new ImageOperation("Make Binary", this, imageProcessingMenu,
+                                         ImageOperation::Grayscale, [this]() { this->binarise(); }));
 
     registerOperation(new ImageOperation("Split Color Channels", this, imageProcessingMenu,
                                          ImageOperation::Color, [this]() { this->splitColorChannels(); }));
@@ -190,6 +310,7 @@ void ImageViewer::createMenu() {
     menuBar->addMenu(imageProcessingMenu);
     menuBar->addMenu(histogramMenu);
     menuBar->addMenu(pointOperationsMenu);
+    menuBar->addMenu(morphologyMenu);
     mainLayout->setMenuBar(menuBar);
     updateOperationsEnabledState();
 }
@@ -267,12 +388,18 @@ void ImageViewer::toggleLUT() {
 
 
 // Image Processing Functions
+void ImageViewer::binarise() {
+    if (originalImage.channels() == 1) {
+        pushToUndoStack();
+        cv::threshold(originalImage, originalImage, 127, 255, cv::THRESH_BINARY);
+        updateImage();
+    }
+}
+
 void ImageViewer::convertToGrayscale() {
     if (originalImage.channels() == 3 || originalImage.channels() == 4) {
+        pushToUndoStack();
         cv::cvtColor(originalImage, originalImage, cv::COLOR_BGR2GRAY);
-
-        // Disable options that no longer apply
-        updateOperationsEnabledState();
         updateImage();
     }
 }
@@ -298,6 +425,7 @@ void ImageViewer::convertToHSVLab() {
 
 // Histogram Operations
 void ImageViewer::stretchHistogram() {
+    pushToUndoStack();
     double minVal, maxVal;
     cv::minMaxLoc(originalImage, &minVal, &maxVal);
     originalImage.convertTo(originalImage, CV_8U, 255.0 / (maxVal - minVal), -minVal * 255.0 / (maxVal - minVal));
@@ -308,6 +436,7 @@ void ImageViewer::equalizeHistogram() {
     if (originalImage.empty() || originalImage.channels() != 1)
         return;
 
+    pushToUndoStack();
     // Step 1: Compute Histogram
     std::vector<int> histogram(256, 0);
     for (int y = 0; y < originalImage.rows; y++) {
@@ -343,6 +472,7 @@ void ImageViewer::equalizeHistogram() {
 
 // Point Operations
 void ImageViewer::applyNegation() {
+    pushToUndoStack();
     originalImage = 255 - originalImage;
     updateImage();
 }
@@ -353,6 +483,7 @@ void ImageViewer::rangeStretching() {
 
     RangeStretchingDialog dialog(this);
     if (dialog.exec() == QDialog::Accepted) {
+        pushToUndoStack();
         int p1 = dialog.getP1();
         int p2 = dialog.getP2();
         int q3 = dialog.getQ3();
@@ -386,6 +517,35 @@ void ImageViewer::rangeStretching() {
     }
 }
 
+void ImageViewer::pushToUndoStack() {
+    if (!originalImage.empty()) {
+        undoStack.push(originalImage.clone());
+        clearRedoStack();  // Clear redo history after a new action
+    }
+}
+
+void ImageViewer::undo() {
+    if (!undoStack.empty()) {
+        redoStack.push(originalImage.clone());
+        originalImage = undoStack.top().clone();
+        undoStack.pop();
+        updateImage();
+    }
+}
+
+void ImageViewer::redo() {
+    if (!redoStack.empty()) {
+        undoStack.push(originalImage.clone());
+        originalImage = redoStack.top().clone();
+        redoStack.pop();
+        updateImage();
+    }
+}
+
+void ImageViewer::clearRedoStack() {
+    while (!redoStack.empty()) redoStack.pop();
+}
+
 // Update displayed image
 void ImageViewer::updateImage() {
     if (originalImage.empty()) return;
@@ -414,6 +574,7 @@ void ImageViewer::updateImage() {
     }
 
     updateZoomLabel();  // Update zoom percentage
+    updateOperationsEnabledState();
 }
 
 void ImageViewer::updateZoomLabel() {
@@ -424,6 +585,7 @@ void ImageViewer::updateZoomLabel() {
 
 void ImageViewer::setZoomFromInput() {
     QString text = zoomInput->text();
+    zoomInput->clearFocus();
     text.remove("%");  // Remove '%' if user includes it
     bool ok;
     int zoomValue = text.toInt(&ok);
@@ -492,6 +654,7 @@ void ImageViewer::updateHistogramTable() {
 void ImageViewer::applyPosterization() {
     int levels = QInputDialog::getInt(this, "Posterization", "Enter number of levels (2-256):", 4, 2, 256);
     if (levels < 2 || levels > 256) return;
+    pushToUndoStack();
 
     cv::Mat tempImage;
     double step = 255.0 / (levels - 1);
@@ -510,16 +673,19 @@ void ImageViewer::applyPosterization() {
 
 
 void ImageViewer::applyBlur() {
+    pushToUndoStack();
     cv::blur(originalImage, originalImage, cv::Size(3, 3), cv::Point(-1, -1), mainWindow->getBorderOption());
     updateImage();
 }
 
 void ImageViewer::applyGaussianBlur() {
+    pushToUndoStack();
     cv::GaussianBlur(originalImage, originalImage, cv::Size(3, 3), 0, 0, mainWindow->getBorderOption());
     updateImage();
 }
 
 void ImageViewer::applySobelEdgeDetection() {
+    pushToUndoStack();
     cv::Mat gradX, gradY;
     cv::Sobel(originalImage, gradX, CV_16S, 1, 0, 3, 1, 0, mainWindow->getBorderOption());
     cv::Sobel(originalImage, gradY, CV_16S, 0, 1, 3, 1, 0, mainWindow->getBorderOption());
@@ -528,17 +694,20 @@ void ImageViewer::applySobelEdgeDetection() {
 }
 
 void ImageViewer::applyLaplacianEdgeDetection() {
+    pushToUndoStack();
     cv::Laplacian(originalImage, originalImage, CV_16S, 1, 1, 0, mainWindow->getBorderOption());
     cv::convertScaleAbs(originalImage, originalImage);
     updateImage();
 }
 
 void ImageViewer::applyCannyEdgeDetection() {
+    pushToUndoStack();
     cv::Canny(originalImage, originalImage, 50, 150);
     updateImage();
 }
 
 void ImageViewer::applySharpening(int option) {
+    pushToUndoStack();
     cv::Mat kernel;
     switch (option) {
     case 1:
@@ -580,48 +749,57 @@ void ImageViewer::setPrewittDirection(int direction) {
     cv::Mat kernel;
     switch (direction) {
     case 0: // Top-left ↖
-        kernel = (cv::Mat_<float>(3,3) << -1, -1, 0,
+        kernel = (cv::Mat_<float>(3,3) <<
+                  -1, -1, 0,
                   -1,  0, 1,
                   0,  1, 1);
         break;
     case 1: // Up ↑
-        kernel = (cv::Mat_<float>(3,3) << -1, -1, -1,
+        kernel = (cv::Mat_<float>(3,3) <<
+                  -1, -1, -1,
                   0,  0,  0,
                   1,  1,  1);
         break;
     case 2: // Top-right ↗
-        kernel = (cv::Mat_<float>(3,3) <<  0, -1, -1,
+        kernel = (cv::Mat_<float>(3,3) <<
+                  0, -1, -1,
                   1,  0, -1,
                   1,  1,  0);
         break;
     case 3: // Left ←
-        kernel = (cv::Mat_<float>(3,3) << -1,  0,  1,
+        kernel = (cv::Mat_<float>(3,3) <<
+                  -1,  0,  1,
                   -1,  0,  1,
                   -1,  0,  1);
         break;
     case 5: // Right →
-        kernel = (cv::Mat_<float>(3,3) <<  1,  0, -1,
+        kernel = (cv::Mat_<float>(3,3) <<
+                  1,  0, -1,
                   1,  0, -1,
                   1,  0, -1);
         break;
     case 6: // Bottom-left ↙
-        kernel = (cv::Mat_<float>(3,3) <<  0,  1,  1,
+        kernel = (cv::Mat_<float>(3,3) <<
+                  0,  1,  1,
                   -1,  0,  1,
                   -1, -1,  0);
         break;
     case 7: // Down ↓
-        kernel = (cv::Mat_<float>(3,3) <<  1,  1,  1,
+        kernel = (cv::Mat_<float>(3,3) <<
+                  1,  1,  1,
                   0,  0,  0,
                   -1, -1, -1);
         break;
     case 8: // Bottom-right ↘
-        kernel = (cv::Mat_<float>(3,3) <<  1,  1,  0,
+        kernel = (cv::Mat_<float>(3,3) <<
+                  1,  1,  0,
                   1,  0, -1,
                   0, -1, -1);
         break;
     }
 
     if (!originalImage.empty()) {
+        pushToUndoStack();
         cv::Mat result;
         cv::filter2D(originalImage, result, -1, kernel, cv::Point(-1, -1), 0, mainWindow->getBorderOption());
         originalImage = result;
@@ -632,6 +810,7 @@ void ImageViewer::setPrewittDirection(int direction) {
 void ImageViewer::applyCustomFilter() {
     CustomFilterDialog dialog(this);
     if (dialog.exec() == QDialog::Accepted) {
+        pushToUndoStack();
         cv::Mat kernel = dialog.getKernel();
         double sum = cv::sum(kernel)[0];
         if (sum != 0) {
@@ -674,6 +853,7 @@ void ImageViewer::applyMedianFilter() {
     int kernelSize = selected.toInt();
 
     int borderType = mainWindow->getBorderOption();
+    pushToUndoStack();
     originalImage = applyCustomMedianFilter(originalImage, kernelSize, borderType);
     updateImage();
 }
@@ -683,6 +863,7 @@ void ImageViewer::applyBitwiseOperation() {
 
     BitwiseOperationDialog dialog(this, mainWindow->openedImages);
     if (dialog.exec() == QDialog::Accepted) {
+        pushToUndoStack();
         originalImage = dialog.getResult();
         updateImage();
     }
@@ -695,6 +876,7 @@ void ImageViewer::closeEvent(QCloseEvent *event){
 void ImageViewer::applyTwoStepFilter() {
     if (originalImage.empty()) return;
 
+    pushToUndoStack();
     originalImage = applyTwoStepFilterOperation(originalImage);
     updateImage();
 }
@@ -720,6 +902,70 @@ cv::Mat ImageViewer::applyTwoStepFilterOperation(const cv::Mat& input) {
     cv::filter2D(input, result, -1, combined5x5, cv::Point(-1, -1), 0, mainWindow->getBorderOption());
 
     return result;
+}
+
+cv::Mat ImageViewer::getStructuringElement(StructuringElementType type) {
+    if (type == Diamond) {
+        // Create a 3x3 diamond-shaped kernel
+        cv::Mat diamond = cv::Mat::zeros(3, 3, CV_8U);
+        diamond.at<uchar>(0, 1) = 1;
+        diamond.at<uchar>(1, 0) = 1;
+        diamond.at<uchar>(1, 1) = 1;
+        diamond.at<uchar>(1, 2) = 1;
+        diamond.at<uchar>(2, 1) = 1;
+        return diamond;
+    } else {
+        // Square (8-connected)
+        return cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+    }
+}
+
+void ImageViewer::applyErosion(StructuringElementType type) {
+    cv::Mat element = getStructuringElement(type);
+    pushToUndoStack();
+    cv::erode(originalImage, originalImage, element, cv::Point(-1, -1), 1, mainWindow->getBorderOption());
+    updateImage();
+}
+
+void ImageViewer::applyDilation(StructuringElementType type) {
+    cv::Mat element = getStructuringElement(type);
+    pushToUndoStack();
+    cv::dilate(originalImage, originalImage, element, cv::Point(-1, -1), 1, mainWindow->getBorderOption());
+    updateImage();
+}
+
+void ImageViewer::applyOpening(StructuringElementType type) {
+    cv::Mat element = getStructuringElement(type);
+    pushToUndoStack();
+    cv::morphologyEx(originalImage, originalImage, cv::MORPH_OPEN, element, cv::Point(-1, -1), 1, mainWindow->getBorderOption());
+    updateImage();
+}
+
+void ImageViewer::applyClosing(StructuringElementType type) {
+    cv::Mat element = getStructuringElement(type);
+    pushToUndoStack();
+    cv::morphologyEx(originalImage, originalImage, cv::MORPH_CLOSE, element, cv::Point(-1, -1), 1, mainWindow->getBorderOption());
+    updateImage();
+}
+
+void ImageViewer::applySkeletonization() {
+
+    pushToUndoStack();
+    cv::Mat binary = originalImage;
+    cv::Mat skeleton = cv::Mat::zeros(binary.size(), CV_8UC1);
+    cv::Mat temp, eroded;
+    cv::Mat element = getStructuringElement(StructuringElementType::Diamond);
+
+    do {
+        cv::erode(binary, eroded, element);
+        cv::dilate(eroded, temp, element);
+        cv::subtract(binary, temp, temp);
+        cv::bitwise_or(skeleton, temp, skeleton);
+        eroded.copyTo(binary);
+    } while (cv::countNonZero(binary) > 0);
+
+    originalImage = skeleton;
+    updateImage();
 }
 
 QImage ImageViewer::MatToQImage(const cv::Mat &mat) {

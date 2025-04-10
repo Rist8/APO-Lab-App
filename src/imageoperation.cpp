@@ -20,8 +20,11 @@ ImageOperation::ImageOperation(const QString &name,
 }
 
 void ImageOperation::updateActionState(ImageType currentImageType) {
-    bool enabled = allowedTypes.testFlag(currentImageType);
-    action->setEnabled(enabled);
+    if ((allowedTypes & Grayscale) && currentImageType == Binary) {
+        action->setEnabled(true);
+    } else {
+        action->setEnabled(allowedTypes & currentImageType);
+    }
 }
 
 QAction* ImageOperation::getAction() const {
