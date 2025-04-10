@@ -43,28 +43,65 @@ jobs:
       shell: bash
       run: echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
+    - name: Cache CMake build files
+      uses: actions/cache@v3
+      with:
+        path: ${{ steps.strings.outputs.build-output-dir }}
+        key: ${{ runner.os }}-cmake-${{ matrix.c_compiler }}-${{ matrix.build_type }}-${{ hashFiles('**/CMakeLists.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-cmake-${{ matrix.c_compiler }}-${{ matrix.build_type }}-
+
+    - name: Cache APT packages
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/cache@v3
+      with:
+        path: $HOME/aptcache
+        key: ubuntu-apt-${{ matrix.os }}-${{ matrix.c_compiler }}-${{ matrix.build_type }}-${{ hashFiles('.github/workflows/**') }}
+        restore-keys: |
+          ubuntu-apt-${{ matrix.os }}-${{ matrix.c_compiler }}-${{ matrix.build_type }}-
+          ubuntu-apt-${{ matrix.os }}-${{ matrix.c_compiler }}-
+          ubuntu-apt-${{ matrix.os }}-
+          ubuntu-apt-
+
     - name: Install dependencies on Windows
       if: matrix.os == 'windows-latest'
       run: |
-        Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
         choco install -y strawberryperl python visualstudio2022buildtools visualstudio2022-workload-vctools ninja cmake git aqt
+
+    - name: Cache Qt AQT installation (Windows)
+      if: matrix.os == 'windows-latest'
+      uses: actions/cache@v3
+      with:
+        path: 5.15.2
+        key: windows-qt-5.15.2
 
     - name: Install Qt on Windows
       if: matrix.os == 'windows-latest'
       run: |
         aqt install-qt windows desktop 5.15.2 win64_msvc2019_64
 
-    - name: Install Qt on Ubuntu
+    - name: Restore cached APT .deb files
       if: matrix.os == 'ubuntu-latest'
       run: |
-        sudo apt-get update
-        sudo apt-get install -y qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools
+        if [ -d "$HOME/aptcache" ]; then
+          sudo cp $HOME/aptcache/*.deb /var/cache/apt/archives/ || true
+        fi
 
-    - name: Install OpenCV on Ubuntu
+    - name: Install dependencies and copy APT cache on Ubuntu
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y libopencv-dev
+        sudo apt-get install -y qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools libopencv-dev
+        mkdir -p $HOME/aptcache
+        sudo cp /var/cache/apt/archives/*.deb $HOME/aptcache || true
+
+
+    - name: Cache OpenCV binaries (Windows)
+      if: matrix.os == 'windows-latest'
+      uses: actions/cache@v3
+      with:
+        path: C:/opencv
+        key: windows-opencv
 
     - name: Install OpenCV on Windows
       if: matrix.os == 'windows-latest'
