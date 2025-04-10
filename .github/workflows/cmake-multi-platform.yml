@@ -55,7 +55,8 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       uses: actions/cache@v3
       with:
-        path: /var/cache/apt/archives
+        path: |
+          /var/cache/apt/archives/*.deb
         key: ubuntu-apt-${{ hashFiles('.github/workflows/**') }}
         restore-keys: |
           ubuntu-apt-
