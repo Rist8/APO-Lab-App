@@ -65,9 +65,20 @@ cv::Mat TwoStepFilterDialog::getKernel2() { return extractKernel(kernelInputs2);
 cv::Mat TwoStepFilterDialog::getKernel3() { return extractKernel(kernel5x5Labels); }
 
 void TwoStepFilterDialog::initKernels(QGridLayout *grid1, QGridLayout *grid2, QGridLayout *grid5x5) {
-    kernelInputs1.resize(3, QVector<QDoubleSpinBox*>(3));
-    kernelInputs2.resize(3, QVector<QDoubleSpinBox*>(3));
-    kernel5x5Labels.resize(5, QVector<QDoubleSpinBox*>(5));
+    kernelInputs1.resize(3);
+    for (auto& row : kernelInputs1) {
+        row.resize(3);
+    }
+
+    kernelInputs2.resize(3);
+    for (auto& row : kernelInputs2) {
+        row.resize(3);
+    }
+
+    kernel5x5Labels.resize(5);
+    for (auto& row : kernel5x5Labels) {
+        row.resize(5);
+    }
 
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 3; j++) {
