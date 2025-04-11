@@ -58,12 +58,12 @@ jobs:
         path: $HOME/aptcache
         key: ubuntu-apt-${{ matrix.os }}-${{ matrix.c_compiler }}-${{ matrix.build_type }}-${{ hashFiles('.github/workflows/**') }}
         restore-keys: |
-          ubuntu-apt-${{ matrix.os }}-${{ matrix.c_compiler }}-${{ matrix.build_type }}-
           ubuntu-apt-${{ matrix.os }}-${{ matrix.c_compiler }}-
           ubuntu-apt-${{ matrix.os }}-
           ubuntu-apt-
 
-    - name: Install dependencies on Windows
+    # REMOVE choco install of VS Build Tools – GitHub runner already has full VS!
+    - name: Install Windows dependencies
       if: matrix.os == 'windows-latest'
       run: |
         choco install -y strawberryperl python ninja cmake git aqt
@@ -94,27 +94,34 @@ jobs:
         sudo apt-get install -y qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools libopencv-dev
         mkdir -p $HOME/aptcache
         sudo cp /var/cache/apt/archives/*.deb $HOME/aptcache || true
-
+        find $HOME/aptcache -type f -name '*.deb' -size -20M | xargs rm -f || true
 
     - name: Cache OpenCV binaries (Windows)
-      if: matrix.os == 'windows-latest'
-      uses: actions/cache@v3
-      with:
-        path: C:/opencv
-        key: windows-opencv
+    if: matrix.os == 'windows-latest'
+    uses: actions/cache@v3
+    with:
+      path: C:/tools/opencv
+      key: windows-opencv
 
     - name: Install OpenCV on Windows
-      if: matrix.os == 'windows-latest'
-      run: |
+    if: matrix.os == 'windows-latest'
+    run: |
+      if (!(Test-Path "C:/tools/opencv")) {
         choco install -y opencv
-        Move-Item -Path "C:/tools/opencv" -Destination "C:/opencv"
+      }
 
+
+    # FIXED CMake: use Visual Studio generator explicitly + avoid broken default
     - name: Configure CMake for Windows
       if: matrix.os == 'windows-latest'
+      shell: cmd
       run: |
-        cmake -B ${{ steps.strings.outputs.build-output-dir }} -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DCMAKE_PREFIX_PATH=D:\a\APO-Lab-App\APO-Lab-App\5.15.2\msvc2019_64\lib\cmake
-      env:
-        QT_DIR: D:\a\APO-Lab-App\APO-Lab-App\5.15.2\msvc2019_64\lib\cmake
+        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" &&
+        cmake -B "${{ steps.strings.outputs.build-output-dir }}" ^
+              -G "Visual Studio 17 2022" ^
+              -A x64 ^
+              -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
+              -DCMAKE_PREFIX_PATH=D:\a\APO-Lab-App\APO-Lab-App\5.15.2\msvc2019_64\lib\cmake
 
     - name: Configure CMake for Ubuntu
       if: matrix.os == 'ubuntu-latest'
