@@ -109,7 +109,7 @@ jobs:
         if (!(Test-Path "C:/tools/opencv")) {
           choco install -y opencv
         }
-        New-Item -ItemType SymbolicLink -Path "C:/opencv" -Target "C:/tools/opencv""
+        New-Item -ItemType SymbolicLink -Path "C:/opencv" -Target "C:/tools/opencv"
 
     - name: Configure CMake for Windows
       if: matrix.os == 'windows-latest'
