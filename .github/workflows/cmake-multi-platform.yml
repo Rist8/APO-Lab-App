@@ -87,13 +87,13 @@ jobs:
         fi
 
     - name: Install dependencies and filter APT cache on Ubuntu
-     if: matrix.os == 'ubuntu-latest'
-     run: |
-       sudo apt-get update
-       sudo apt-get install -y qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools libopencv-dev
-       mkdir -p "$HOME/aptcache"
-       sudo find /var/cache/apt/archives/ -type f -name '*.deb' -size -20M -exec cp --parents {} "$HOME/aptcache/" \;
-       sudo chown -R $(whoami) "$HOME/aptcache"
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools libopencv-dev
+        mkdir -p "$HOME/aptcache"
+        sudo find /var/cache/apt/archives/ -type f -name '*.deb' -size -20M -exec cp --parents {} "$HOME/aptcache/" \;
+        sudo chown -R $(whoami) "$HOME/aptcache"
 
 
     - name: Cache OpenCV binaries (Windows)
