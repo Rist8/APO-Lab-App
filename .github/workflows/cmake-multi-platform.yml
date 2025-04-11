@@ -66,7 +66,7 @@ jobs:
     - name: Install dependencies on Windows
       if: matrix.os == 'windows-latest'
       run: |
-        choco install -y strawberryperl python visualstudio2022buildtools visualstudio2022-workload-vctools ninja cmake git aqt
+        choco install -y strawberryperl python ninja cmake git aqt
 
     - name: Cache Qt AQT installation (Windows)
       if: matrix.os == 'windows-latest'
