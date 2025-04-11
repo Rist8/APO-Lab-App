@@ -97,18 +97,18 @@ jobs:
         find $HOME/aptcache -type f -name '*.deb' -size -20M | xargs rm -f || true
 
     - name: Cache OpenCV binaries (Windows)
-    if: matrix.os == 'windows-latest'
-    uses: actions/cache@v3
-    with:
-      path: C:/tools/opencv
-      key: windows-opencv
+      if: matrix.os == 'windows-latest'
+      uses: actions/cache@v3
+      with:
+        path: C:/tools/opencv
+        key: windows-opencv
 
     - name: Install OpenCV on Windows
-    if: matrix.os == 'windows-latest'
-    run: |
-      if (!(Test-Path "C:/tools/opencv")) {
-        choco install -y opencv
-      }
+      if: matrix.os == 'windows-latest'
+      run: |
+        if (!(Test-Path "C:/tools/opencv")) {
+          choco install -y opencv
+        }
 
 
     # FIXED CMake: use Visual Studio generator explicitly + avoid broken default
