@@ -1,4 +1,4 @@
-#include "HoughDialog.h"
+#include "houghdialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
