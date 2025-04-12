@@ -29,6 +29,8 @@ set(PROJECT_SOURCES
     include/imageoperation.h
     src/imageoperation.cpp
     include/clickablelabel.h
+    include/imageprocessing.h
+    src/imageprocessing.cpp
     src/imageviewer.cpp
     include/imageviewer.h
     include/histogramwidget.h
@@ -52,8 +54,6 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
     qt_add_executable(APO-Lab-App
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
-        include/imageprocessing.h
-        src/imageprocessing.cpp
     )
 # Define target properties for Android with Qt 6 as:
 #    set_property(TARGET APO-Lab-App APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
