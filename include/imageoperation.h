@@ -16,7 +16,8 @@ public:
         Grayscale = 0x1,
         Color     = 0x2,
         Binary    = 0x4,
-        All       = Grayscale | Color | Binary
+        All       = Grayscale | Color | Binary,
+        None      = 0x8
     };
     Q_DECLARE_FLAGS(ImageTypes, ImageType)
 
@@ -25,7 +26,8 @@ public:
                    QMenu *parentMenu,
                    ImageTypes supportedTypes,
                    std::function<void()> slotFunction,
-                   bool checkable = false);
+                   bool checkable = false,
+                   QKeySequence keyBind = QKeySequence());
 
     void updateActionState(ImageType currentImageType);
     QAction* getAction() const;
@@ -36,6 +38,7 @@ private:
     QMenu *menu;
     ImageTypes allowedTypes;
     std::function<void()> operationFunc;
+    QKeySequence bind;
     ImageViewer *viewer;
 };
 

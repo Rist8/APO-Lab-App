@@ -3,6 +3,11 @@
 #include <QVBoxLayout>
 #include <QActionGroup>
 
+// ==========================================================================
+// Group 1: Application Core & Main Window
+// ==========================================================================
+// Constructor: Sets up the main window menu bar (File, Info, Options).
+// ==========================================================================
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     QMenu *fileMenu = menuBar()->addMenu("File");
     QAction *openAction = new QAction("Open", this);
@@ -41,10 +46,20 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setBorderOption(cv::BORDER_ISOLATED, borderIsolated); // Default selection
 }
 
+// ==========================================================================
+// Group 1: Application Core & Main Window
+// ==========================================================================
+// Returns the currently selected border handling option for OpenCV functions.
+// ==========================================================================
 int MainWindow::getBorderOption() {
     return borderOption;
 }
 
+// ==========================================================================
+// Group 1: Application Core & Main Window
+// ==========================================================================
+// Sets the border handling option and updates menu checks.
+// ==========================================================================
 void MainWindow::setBorderOption(int option, QAction *selectedAction) {
     borderOption = option;
     borderIsolated->setChecked(false);
@@ -53,6 +68,11 @@ void MainWindow::setBorderOption(int option, QAction *selectedAction) {
     selectedAction->setChecked(true);
 }
 
+// ==========================================================================
+// Group 1: Application Core & Main Window
+// ==========================================================================
+// Opens a file dialog to load an image and creates an ImageViewer for it.
+// ==========================================================================
 void MainWindow::openImage() {
     QString filePath = QFileDialog::getOpenFileName(this, "Open Image", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif)");
     if (!filePath.isEmpty()) {
@@ -72,7 +92,11 @@ void MainWindow::openImage() {
     }
 }
 
-
+// ==========================================================================
+// Group 1: Application Core & Main Window
+// ==========================================================================
+// Displays an 'About' message box.
+// ==========================================================================
 void MainWindow::showInfo() {
     QMessageBox::information(this, "About",
                              "Aplikacja zbiorcza z ćwiczeń laboratoryjnych\n"
