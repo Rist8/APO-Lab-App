@@ -77,7 +77,7 @@ jobs:
     - name: Install Qt on Windows
       if: matrix.os == 'windows-latest'
       run: |
-        aqt install-qt windows desktop 5.15.2 win64_msvc2019_64
+        aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 -m qtcharts qtcore qtgui qtwidgets
 
     - name: Restore cached APT .deb files
       if: matrix.os == 'ubuntu-latest'
@@ -90,7 +90,7 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools libopencv-dev
+        sudo apt-get install -y qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools libqt5charts5-dev libopencv-dev
         mkdir -p /home/runner/aptcache
         sudo find /var/cache/apt/archives/ -type f -name '*.deb' -size -20M -exec cp --parents {} /home/runner/aptcache/ \;
         sudo chown -R $(whoami) /home/runner/aptcache
