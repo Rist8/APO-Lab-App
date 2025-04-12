@@ -55,10 +55,9 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       uses: actions/cache@v3
       with:
-        path: $HOME/aptcache
+        path: /home/runner/aptcache
         key: ubuntu-apt-${{ matrix.os }}-${{ matrix.c_compiler }}-${{ matrix.build_type }}-${{ hashFiles('.github/workflows/**') }}
         restore-keys: |
-          ubuntu-apt-${{ matrix.os }}-${{ matrix.c_compiler }}-${{ matrix.build_type }}-
           ubuntu-apt-${{ matrix.os }}-${{ matrix.c_compiler }}-
           ubuntu-apt-${{ matrix.os }}-
           ubuntu-apt-
@@ -66,7 +65,7 @@ jobs:
     - name: Install dependencies on Windows
       if: matrix.os == 'windows-latest'
       run: |
-        choco install -y strawberryperl python visualstudio2022buildtools visualstudio2022-workload-vctools ninja cmake git aqt
+        choco install -y strawberryperl python ninja cmake git aqt visualstudio2022buildtools visualstudio2022-workload-vctools 
 
     - name: Cache Qt AQT installation (Windows)
       if: matrix.os == 'windows-latest'
@@ -83,31 +82,34 @@ jobs:
     - name: Restore cached APT .deb files
       if: matrix.os == 'ubuntu-latest'
       run: |
-        if [ -d "$HOME/aptcache" ]; then
-          sudo cp $HOME/aptcache/*.deb /var/cache/apt/archives/ || true
+        if [ -d /home/runner/aptcache ]; then
+          sudo cp /home/runner/aptcache/*.deb /var/cache/apt/archives/ || true
         fi
 
-    - name: Install dependencies and copy APT cache on Ubuntu
+    - name: Install dependencies and filter APT cache on Ubuntu
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
         sudo apt-get install -y qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools libopencv-dev
-        mkdir -p $HOME/aptcache
-        sudo cp /var/cache/apt/archives/*.deb $HOME/aptcache || true
+        mkdir -p /home/runner/aptcache
+        sudo find /var/cache/apt/archives/ -type f -name '*.deb' -size -20M -exec cp --parents {} /home/runner/aptcache/ \;
+        sudo chown -R $(whoami) /home/runner/aptcache
 
 
     - name: Cache OpenCV binaries (Windows)
       if: matrix.os == 'windows-latest'
       uses: actions/cache@v3
       with:
-        path: C:/opencv
+        path: C:/tools/opencv
         key: windows-opencv
 
     - name: Install OpenCV on Windows
       if: matrix.os == 'windows-latest'
       run: |
-        choco install -y opencv
-        Move-Item -Path "C:/tools/opencv" -Destination "C:/opencv"
+        if (!(Test-Path "C:/tools/opencv")) {
+          choco install -y opencv
+        }
+        New-Item -ItemType SymbolicLink -Path "C:/opencv" -Target "C:/tools/opencv"
 
     - name: Configure CMake for Windows
       if: matrix.os == 'windows-latest'
@@ -115,6 +117,7 @@ jobs:
         cmake -B ${{ steps.strings.outputs.build-output-dir }} -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DCMAKE_PREFIX_PATH=D:\a\APO-Lab-App\APO-Lab-App\5.15.2\msvc2019_64\lib\cmake
       env:
         QT_DIR: D:\a\APO-Lab-App\APO-Lab-App\5.15.2\msvc2019_64\lib\cmake
+
 
     - name: Configure CMake for Ubuntu
       if: matrix.os == 'ubuntu-latest'
