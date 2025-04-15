@@ -15,6 +15,7 @@ class MainWindow : public QMainWindow {
 public:
     explicit MainWindow(QWidget *parent = nullptr);
     int getBorderOption();
+    bool isPyramidScalingEnabled() const;
     QVector<QWidget*> openedImages;
 
 private slots:
@@ -23,6 +24,8 @@ private slots:
     void setBorderOption(int option, QAction *selectedAction);
 
 private:
+    bool usePyramidScaling = false;
+    QAction *pyramidScalingToggle;
     int borderOption;
     QAction *borderIsolated;
     QAction *borderReflect;

@@ -44,6 +44,24 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     borderMenu->addAction(borderReplicate);
 
     setBorderOption(cv::BORDER_ISOLATED, borderIsolated); // Default selection
+
+    pyramidScalingToggle = new QAction("Use Pyramid Scaling", this);
+    pyramidScalingToggle->setCheckable(true);
+    pyramidScalingToggle->setChecked(false); // Default off
+
+    connect(pyramidScalingToggle, &QAction::triggered, this, [this](bool checked) {
+        usePyramidScaling = checked;
+
+        // Update all opened image viewers
+        for (QWidget* widget : openedImages) {
+            auto viewer = qobject_cast<ImageViewer*>(widget);
+            if (viewer) {
+                viewer->setUsePyramidScaling(checked);
+            }
+        }
+    });
+
+    optionsMenu->addAction(pyramidScalingToggle);
 }
 
 // ==========================================================================
@@ -55,6 +73,14 @@ int MainWindow::getBorderOption() {
     return borderOption;
 }
 
+// ==========================================================================
+// Group 1: Application Core & Main Window
+// ==========================================================================
+// Returns the current state of pyramid scaling toggle.
+// ==========================================================================
+bool MainWindow::isPyramidScalingEnabled() const {
+    return usePyramidScaling;
+}
 // ==========================================================================
 // Group 1: Application Core & Main Window
 // ==========================================================================

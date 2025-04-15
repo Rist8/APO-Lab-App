@@ -48,6 +48,9 @@ public:
     cv::Mat getOriginalImage() const { return originalImage; }
     MainWindow* getMainWindow() const { return mainWindow; }
 
+    // --- Setters ---
+    void setUsePyramidScaling(bool enable) { usePyramidScaling = enable; updateImage();}
+
     // --- UI Control ---
     void setZoom(double scale) { currentScale = scale; updateImage(); }
     std::vector<cv::Point> getUserSelectedPoints(int count); // For interactive point selection
@@ -122,6 +125,7 @@ private:
     double currentScale;        // Current zoom level (1.0 = 100%)
     MainWindow *mainWindow;     // Pointer to the main application window
     QList<ImageOperation*> operationsList; // List of registered operations for state updates
+    bool usePyramidScaling = false;
 
     // Morphology element types (could be moved to dialogs if needed per-operation)
     StructuringElementType erosionElement = Diamond;

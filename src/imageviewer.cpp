@@ -686,49 +686,73 @@ void ImageViewer::clearRedoStack() {
 void ImageViewer::updateImage() {
     if (originalImage.empty()) {
         imageLabel->clear();
-        setWindowTitle("Image Viewer"); // Reset title
-        // Maybe disable most actions if image is empty
+        setWindowTitle("Image Viewer");
         updateOperationsEnabledState();
-        if(histogramWindow) histogramWindow->computeHistogram(cv::Mat()); // Clear histogram too
-        if(LUT && LUT->isVisible()) updateHistogramTable(); // Clear LUT
+        if (histogramWindow) histogramWindow->computeHistogram(cv::Mat());
+        if (LUT && LUT->isVisible()) updateHistogramTable();
         return;
     }
 
-    QImage qimg = MatToQImage(originalImage);
+    // --- Clamp currentScale to pyramid-friendly values if pyramid is active ---
+    if (usePyramidScaling) {
+        static const std::vector<double> pyramidScales = {0.25, 0.5, 1.0, 2.0, 4.0};
+        auto closest = std::min_element(pyramidScales.begin(), pyramidScales.end(),
+                                        [=](double a, double b) {
+                                            return std::abs(currentScale - a) < std::abs(currentScale - b);
+                                        });
+        currentScale = *closest;
+    }
+
+    cv::Mat displayImage = originalImage.clone();
+    if (usePyramidScaling) {
+        if (currentScale == 0.5) {
+            cv::pyrDown(displayImage, displayImage);
+        } else if (currentScale == 0.25) {
+            cv::pyrDown(displayImage, displayImage);
+            cv::pyrDown(displayImage, displayImage);
+        } else if (currentScale == 2.0) {
+            cv::pyrUp(displayImage, displayImage);
+        } else if (currentScale == 4.0) {
+            cv::pyrUp(displayImage, displayImage);
+            cv::pyrUp(displayImage, displayImage);
+        }
+    }
+
+
+    QImage qimg = MatToQImage(displayImage);
     if (qimg.isNull()) {
         QMessageBox::warning(this, "Display Error", "Failed to convert image format for display.");
         imageLabel->clear();
-        updateOperationsEnabledState(); // Disable ops
+        updateOperationsEnabledState();
         return;
     }
 
-    // Calculate scaled size based on currentScale
-    int newWidth = static_cast<int>(std::round(qimg.width() * currentScale));
-    int newHeight = static_cast<int>(std::round(qimg.height() * currentScale));
-    newWidth = std::max(1, newWidth);   // Ensure minimum size of 1x1
-    newHeight = std::max(1, newHeight);
-
-    // Scale the pixmap
-    QPixmap scaledPixmap = QPixmap::fromImage(qimg).scaled(newWidth, newHeight, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-    imageLabel->setPixmap(scaledPixmap);
-    imageLabel->setFixedSize(newWidth, newHeight); // Fix label size to scaled pixmap size
-
-
-    // --- Window Resizing ---
-    // Only resize if not maximized/fullscreen and maybe only if size changed significantly?
-    if (!isMaximized() && !isFullScreen()) {
-        adjustSize(); // adjustSize might conflict with manual resize, test which works better
+    QPixmap pixmap;
+    if (usePyramidScaling) {
+        pixmap = QPixmap::fromImage(qimg); // Already scaled, no additional scaling
+    } else {
+        int newWidth = std::max(1, static_cast<int>(std::round(qimg.width() * currentScale)));
+        int newHeight = std::max(1, static_cast<int>(std::round(qimg.height() * currentScale)));
+        pixmap = QPixmap::fromImage(qimg).scaled(newWidth, newHeight, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     }
 
-    // --- Update Dependent Widgets ---
-    updateHistogram(); // Update the separate histogram window data
+    imageLabel->setPixmap(pixmap);
+    imageLabel->setFixedSize(pixmap.size());
+
+    if (!isMaximized() && !isFullScreen()) {
+        adjustSize();
+    }
+
+    updateHistogram();
     if (LUT && LUT->isVisible()) {
-        updateHistogramTable(); // Update the embedded LUT table
+        updateHistogramTable();
     }
 
     updateZoomLabel();
-    updateOperationsEnabledState(); // Update menu states based on new image type/state
+    updateOperationsEnabledState();
 }
+
+
 
 // ==========================================================================
 // Group 4: UI Widgets & Visualization - ZOOM CONTROLS
@@ -767,30 +791,36 @@ void ImageViewer::setZoomFromInput() {
 // Group 4: UI Widgets & Visualization - WHEEL EVENT FOR ZOOM
 // ==========================================================================
 void ImageViewer::wheelEvent(QWheelEvent *event) {
-    const double scaleFactor = 1.15; // Zoom sensitivity
     double oldScale = currentScale;
 
-    // Determine zoom direction
-    if (event->angleDelta().y() > 0) {
-        // Zoom In
-        currentScale *= scaleFactor;
-    } else if (event->angleDelta().y() < 0) {
-        // Zoom Out
-        currentScale /= scaleFactor;
+    if (usePyramidScaling) {
+        // Only allow switching between 0.25, 0.5, 1.0, 2.0, 4.0
+        static const std::vector<double> pyramidScales = {0.25, 0.5, 1.0, 2.0, 4.0};
+        auto it = std::find(pyramidScales.begin(), pyramidScales.end(), currentScale);
+        if (it != pyramidScales.end()) {
+            if (event->angleDelta().y() > 0 && it + 1 != pyramidScales.end()) {
+                currentScale = *(it + 1); // Zoom in
+            } else if (event->angleDelta().y() < 0 && it != pyramidScales.begin()) {
+                currentScale = *(it - 1); // Zoom out
+            }
+        }
+    } else {
+        const double scaleFactor = 1.15;
+        if (event->angleDelta().y() > 0) {
+            currentScale *= scaleFactor;
+        } else {
+            currentScale /= scaleFactor;
+        }
+        currentScale = qBound(0.1, currentScale, 5.0);
     }
 
-    // Clamp zoom level to min/max
-    currentScale = qBound(0.1, currentScale, 5.0); // Clamp between 10% and 500%
-
-    // Only update if the scale actually changed significantly
     if (std::abs(currentScale - oldScale) > 1e-6) {
         updateImage();
-        // Optional: update zoom input immediately
-        // updateZoomLabel(); // updateImage already calls this
     }
 
-    event->accept(); // Accept the event
+    event->accept();
 }
+
 
 // ==========================================================================
 // Group 7: Image Processing - Histogram Operations
