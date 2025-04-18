@@ -11,7 +11,7 @@
 // ==========================================================================
 // Constructor: Sets up the dialog for Hough Line Transform parameters.
 // ==========================================================================
-HoughDialog::HoughDialog(QWidget* parent) : QDialog(parent) {
+HoughDialog::HoughDialog(QWidget* parent) : PreviewDialogBase(parent) {
     setWindowTitle("Hough Line Detection Parameters");
 
     auto layout = new QVBoxLayout(this);
@@ -23,6 +23,7 @@ HoughDialog::HoughDialog(QWidget* parent) : QDialog(parent) {
     rhoSpin->setRange(0.1, 10.0);
     rhoSpin->setSingleStep(0.1);
     rhoSpin->setValue(1.0);
+    connect(rhoSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &PreviewDialogBase::previewRequested);
     rhoLayout->addWidget(rhoSpin);
     layout->addLayout(rhoLayout);
 
@@ -33,6 +34,7 @@ HoughDialog::HoughDialog(QWidget* parent) : QDialog(parent) {
     thetaSpin->setRange(0.1, 180.0); // Degrees input
     thetaSpin->setSingleStep(1.0);
     thetaSpin->setValue(1.0);        // Default 1 degree
+    connect(thetaSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &PreviewDialogBase::previewRequested);
     thetaLayout->addWidget(thetaSpin);
     layout->addLayout(thetaLayout);
 
@@ -42,10 +44,16 @@ HoughDialog::HoughDialog(QWidget* parent) : QDialog(parent) {
     thresholdSpin = new QSpinBox();
     thresholdSpin->setRange(1, 1000);
     thresholdSpin->setValue(160); // Default threshold
+    connect(thresholdSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, &PreviewDialogBase::previewRequested);
     threshLayout->addWidget(thresholdSpin);
     layout->addLayout(threshLayout);
 
     // Buttons
+    previewCheckBox = new QCheckBox("Preview");
+    previewCheckBox->setChecked(false); // default off
+    connect(previewCheckBox, &QCheckBox::checkStateChanged, this, &PreviewDialogBase::previewRequested);
+    layout->addWidget(previewCheckBox);
+
     auto buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     layout->addWidget(buttons);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);

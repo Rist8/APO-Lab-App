@@ -1,12 +1,14 @@
 #ifndef BITWISEOPERATIONDIALOG_H
 #define BITWISEOPERATIONDIALOG_H
 
+#include "previewdialogbase.h"
 #include <QDialog>
 #include <QMap> // <-- Added include for QMap
 #include <QString> // <-- Added include for QString
 
 #include <opencv2/opencv.hpp> // Keep for cv::Mat
 #include <qboxlayout.h>
+#include <qcheckbox.h>
 
 // Forward declarations for pointer members to reduce header dependencies
 class QComboBox;
@@ -16,7 +18,7 @@ class QListWidget;
 class QLabel;
 class ImageViewer; // Forward declare ImageViewer
 
-class BitwiseOperationDialog : public QDialog {
+class BitwiseOperationDialog : public PreviewDialogBase {
     Q_OBJECT
 
 public:
@@ -25,6 +27,9 @@ public:
 
     // Getter for the resulting image after processing
     cv::Mat getResult() const { return resultImage; }
+
+
+    QCheckBox* getPreviewCheckBox() const { return previewCheckBox; }
 
     // Getters for dialog parameters (optional, might not be needed externally)
     // int getSelectedImageIndex() const; // Index might be fragile, title/pointer better
@@ -37,9 +42,13 @@ private slots:
     // Slot to update UI elements based on selected operation (e.g., show/hide alpha)
     void updateUi();
 
+signals:
+    void previewRequested();
+
 private:
     // --- UI Elements (Declared as members) ---
     QVBoxLayout *mainLayout;
+    QCheckBox* previewCheckBox;
     QComboBox *operationCombo;
     QListWidget *imageList;
     QHBoxLayout *alphaLayout; // Layout containing alpha controls

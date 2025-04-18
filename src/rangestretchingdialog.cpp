@@ -11,7 +11,7 @@
 // ==========================================================================
 // Constructor: Sets up the dialog for range stretching parameters (p1, p2, q3, q4).
 // ==========================================================================
-RangeStretchingDialog::RangeStretchingDialog(QWidget *parent) : QDialog(parent) {
+RangeStretchingDialog::RangeStretchingDialog(QWidget *parent) : PreviewDialogBase(parent) {
     setWindowTitle("Range Stretching Parameters");
     // setFixedSize(300, 250); // Avoid fixed size
 
@@ -51,6 +51,7 @@ RangeStretchingDialog::RangeStretchingDialog(QWidget *parent) : QDialog(parent) 
     // Add validation for p1 < p2
     connect(p1SpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val){ if(val >= p2SpinBox->value()) p2SpinBox->setValue(val + 1); });
     connect(p1Slider, &QSlider::valueChanged, this, [this](int val){ if(val >= p2Slider->value()) p2Slider->setValue(val + 1); });
+    connect(p1SpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, &PreviewDialogBase::previewRequested);
 
 
     connect(p2Slider, &QSlider::valueChanged, p2SpinBox, &QSpinBox::setValue);
@@ -58,6 +59,7 @@ RangeStretchingDialog::RangeStretchingDialog(QWidget *parent) : QDialog(parent) 
     // Add validation for p2 > p1
     connect(p2SpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val){ if(val <= p1SpinBox->value()) p1SpinBox->setValue(val - 1); });
     connect(p2Slider, &QSlider::valueChanged, this, [this](int val){ if(val <= p1Slider->value()) p1Slider->setValue(val - 1); });
+    connect(p2SpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, &PreviewDialogBase::previewRequested);
 
 
     connect(q3Slider, &QSlider::valueChanged, q3SpinBox, &QSpinBox::setValue);
@@ -65,6 +67,7 @@ RangeStretchingDialog::RangeStretchingDialog(QWidget *parent) : QDialog(parent) 
         // Add validation for q3 < q4
     connect(q3SpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val){ if(val >= q4SpinBox->value()) q4SpinBox->setValue(val + 1); });
     connect(q3Slider, &QSlider::valueChanged, this, [this](int val){ if(val >= q4Slider->value()) q4Slider->setValue(val + 1); });
+    connect(q3SpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, &PreviewDialogBase::previewRequested);
 
 
     connect(q4Slider, &QSlider::valueChanged, q4SpinBox, &QSpinBox::setValue);
@@ -72,6 +75,7 @@ RangeStretchingDialog::RangeStretchingDialog(QWidget *parent) : QDialog(parent) 
     // Add validation for q4 > q3
     connect(q4SpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val){ if(val <= q3SpinBox->value()) q3SpinBox->setValue(val - 1); });
     connect(q4Slider, &QSlider::valueChanged, this, [this](int val){ if(val <= q3Slider->value()) q3Slider->setValue(val - 1); });
+    connect(q4SpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, &PreviewDialogBase::previewRequested);
 
 
     // Layouts
@@ -95,6 +99,11 @@ RangeStretchingDialog::RangeStretchingDialog(QWidget *parent) : QDialog(parent) 
     mainLayout->addWidget(new QLabel("Output Range (q3, q4):"));
     mainLayout->addLayout(createRow("q3:", q3SpinBox, q3Slider));
     mainLayout->addLayout(createRow("q4:", q4SpinBox, q4Slider));
+
+    previewCheckBox = new QCheckBox("Preview");
+    previewCheckBox->setChecked(false); // default off
+    connect(previewCheckBox, &QCheckBox::checkStateChanged, this, &PreviewDialogBase::previewRequested);
+    mainLayout->addWidget(previewCheckBox);
 
     // Buttons
     QPushButton *okButton = new QPushButton("OK");

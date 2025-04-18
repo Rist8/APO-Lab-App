@@ -7,7 +7,7 @@
 #include <QPushButton>
 #include <QVector>
 
-TwoStepFilterDialog::TwoStepFilterDialog(QWidget *parent) : QDialog(parent) {
+TwoStepFilterDialog::TwoStepFilterDialog(QWidget *parent) : PreviewDialogBase(parent) {
     setWindowTitle("Two-Step Filter Input");
     setFixedSize(600, 500);
 
@@ -43,6 +43,11 @@ TwoStepFilterDialog::TwoStepFilterDialog(QWidget *parent) : QDialog(parent) {
     label3->setAlignment(Qt::AlignCenter);
     mainLayout->addWidget(label3);
     mainLayout->addLayout(gridLayout5x5);
+
+    previewCheckBox = new QCheckBox("Preview");
+    previewCheckBox->setChecked(false); // default off
+    connect(previewCheckBox, &QCheckBox::checkStateChanged, this, &PreviewDialogBase::previewRequested);
+    mainLayout->addWidget(previewCheckBox);
 
     // Buttons
     QPushButton *okButton = new QPushButton("OK");
@@ -99,6 +104,7 @@ void TwoStepFilterDialog::initKernels(QGridLayout *grid1, QGridLayout *grid2, QG
             spinBox->setButtonSymbols(QDoubleSpinBox::NoButtons);
             spinBox->setFocusPolicy(Qt::NoFocus);  // Optional for cleaner UX
 
+
             kernel5x5Labels[i][j] = spinBox;
             grid5x5->addWidget(spinBox, i, j);
         }
@@ -114,6 +120,7 @@ QDoubleSpinBox* TwoStepFilterDialog::createSpinBox(QGridLayout *layout, int row,
     spinBox->setFixedSize(85, 45);
     spinBox->setAlignment(Qt::AlignCenter);
     connect(spinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &TwoStepFilterDialog::updateKernel5x5);
+    connect(spinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &PreviewDialogBase::previewRequested);
     layout->addWidget(spinBox, row, col);
     return spinBox;
 }

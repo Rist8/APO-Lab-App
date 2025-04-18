@@ -275,7 +275,7 @@ void ImageViewer::createMenu() {
                                          [this]() { this->applyTwoStepFilter(); }));
     filterMenu->addSeparator();
     registerOperation(new ImageOperation("Detect Lines (Hough)...", this, filterMenu,
-                                         ImageOperation::Binary, // Hough requires binary
+                                         ImageOperation::All, // Hough requires binary
                                          [this]() { this->applyHoughLineDetection(); }));
 
     // --- Morphology Menu ---
@@ -430,7 +430,7 @@ void ImageViewer::onImageClicked(QMouseEvent* event) {
 // REVERTED saveImageAs function kept as is
 // ==========================================================================
 void ImageViewer::saveImageAs() {
-    QString filePath = QFileDialog::getSaveFileName(this, "Save Image As", "", "Images (*.png *.jpg *.jpeg *.bmp)");
+    QString filePath = QFileDialog::getSaveFileName(this, "Save Image As", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif *.tiff)");
     if (!filePath.isEmpty()) {
         std::vector<int> compression_params;
         if (filePath.endsWith(".jpg", Qt::CaseInsensitive) || filePath.endsWith(".jpeg", Qt::CaseInsensitive)) {
@@ -601,15 +601,11 @@ void ImageViewer::applyNegation() {
 
 void ImageViewer::rangeStretching() {
     RangeStretchingDialog dialog(this);
-    if (dialog.exec() == QDialog::Accepted) {
-        pushToUndoStack();
-        int p1 = dialog.getP1();
-        int p2 = dialog.getP2();
-        int q3 = dialog.getQ3();
-        int q4 = dialog.getQ4();
-        originalImage = ImageProcessing::applyRangeStretching(originalImage, p1, p2, q3, q4);
-        updateImage();
-    }
+    setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
+        return ImageProcessing::applyRangeStretching(originalImage, dialog.getP1(),
+                                                     dialog.getP2(), dialog.getQ3(), dialog.getQ4());
+    });
+    dialog.exec();
 }
 
 void ImageViewer::applyPosterization() {
@@ -625,16 +621,11 @@ void ImageViewer::applyPosterization() {
 void ImageViewer::applyBitwiseOperation() {
     if (originalImage.empty() || !mainWindow) return;
     BitwiseOperationDialog dialog(this, mainWindow->openedImages);
-    if (dialog.exec() == QDialog::Accepted) {
-        cv::Mat result = dialog.getResult();
-        if (!result.empty()) {
-            pushToUndoStack();
-            originalImage = result;
-            updateImage();
-        } else {
-            QMessageBox::warning(this, "Operation Failed", "Bitwise operation could not be completed (maybe incompatible images?).");
-        }
-    }
+    setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
+        return dialog.getResult();
+    });
+    dialog.exec();
+
 }
 
 // ==========================================================================
@@ -934,25 +925,20 @@ void ImageViewer::applySharpening(int option) {
 
 void ImageViewer::applyPrewittEdgeDetection() {
     DirectionSelectionDialog dialog(this);
-    connect(&dialog, &DirectionSelectionDialog::directionSelected, this, &ImageViewer::setPrewittDirection);
+    setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
+        return ImageProcessing::applyPrewittEdgeDetection(originalImage, dialog.getSelectedDirection(),
+                                                          mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
+    });
     dialog.exec();
-}
-
-// Slot remains private, called by applyPrewittEdgeDetection
-void ImageViewer::setPrewittDirection(int direction) {
-    pushToUndoStack();
-    originalImage = ImageProcessing::applyPrewittEdgeDetection(originalImage, direction, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
-    updateImage();
 }
 
 void ImageViewer::applyCustomFilter() {
     CustomFilterDialog dialog(this);
-    if (dialog.exec() == QDialog::Accepted) {
-        pushToUndoStack();
-        cv::Mat kernel = dialog.getKernel();
-        originalImage = ImageProcessing::applyCustomFilter(originalImage, kernel, true, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
-        updateImage();
-    }
+    setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
+        return ImageProcessing::applyCustomFilter(originalImage, dialog.getKernel(), true,
+                                                  mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
+    });
+    dialog.exec();
 }
 
 void ImageViewer::applyMedianFilter() {
@@ -969,13 +955,11 @@ void ImageViewer::applyMedianFilter() {
 
 void ImageViewer::applyTwoStepFilter() {
     TwoStepFilterDialog filterDialog(this);
-    if (filterDialog.exec() == QDialog::Accepted) {
-        pushToUndoStack();
-        cv::Mat kernel1 = filterDialog.getKernel1();
-        cv::Mat kernel2 = filterDialog.getKernel2();
-        originalImage = ImageProcessing::applyTwoStepFilter(originalImage, kernel1, kernel2, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
-        updateImage();
-    }
+    setupPreview(&filterDialog, filterDialog.getPreviewCheckBox(), [&]() {
+        return ImageProcessing::applyTwoStepFilter(originalImage.clone(), filterDialog.getKernel1(),
+                                                   filterDialog.getKernel2(), mainWindow->getBorderOption());
+    });
+    filterDialog.exec();
 }
 
 // ==========================================================================
@@ -1006,6 +990,9 @@ void ImageViewer::applyHoughLineDetection() {
                 grayForCanny = ImageProcessing::convertToGrayscale(originalImage);
             }
             edgeImage = ImageProcessing::applyCannyEdgeDetection(grayForCanny, 50, 150);
+            pushToUndoStack();
+            originalImage = edgeImage;
+            updateImage();
         } else {
             return; // User chose not to proceed
         }
@@ -1019,52 +1006,12 @@ void ImageViewer::applyHoughLineDetection() {
     }
 
     HoughDialog dialog(this);
-    if (dialog.exec() != QDialog::Accepted) return; // User cancelled dialog
 
-    pushToUndoStack(); // Push state *before* drawing lines
-
-    double rho = dialog.getRho();
-    double thetaRadians = dialog.getThetaDegrees() * CV_PI / 180.0;
-    int threshold = dialog.getThreshold();
-
-    std::vector<cv::Vec2f> lines = ImageProcessing::detectHoughLines(edgeImage, rho, thetaRadians, threshold);
-
-    // Prepare image for drawing lines (convert original to color if needed)
-    cv::Mat colorImage;
-    if (originalImage.channels() == 1) {
-        cv::cvtColor(originalImage, colorImage, cv::COLOR_GRAY2BGR);
-    } else if (originalImage.channels() == 3){
-        colorImage = originalImage.clone(); // Already BGR
-    } else if (originalImage.channels() == 4) {
-        cv::cvtColor(originalImage, colorImage, cv::COLOR_BGRA2BGR); // Drop alpha
-    } else {
-        QMessageBox::warning(this, "Hough Draw Error", "Cannot draw lines on image with unsupported channel count.");
-        undo(); // Revert the pushToUndoStack
-        return;
-    }
-
-    // Draw detected lines
-    if (!lines.empty()) {
-        qInfo() << "Detected" << lines.size() << "lines.";
-        for (size_t i = 0; i < lines.size(); i++) {
-            float r = lines[i][0], t = lines[i][1];
-            double a = std::cos(t), b = std::sin(t);
-            double x0 = a * r, y0 = b * r;
-            // Calculate points far enough to span the image diagonal for safety
-            double imgDiagonal = std::sqrt(colorImage.cols*colorImage.cols + colorImage.rows*colorImage.rows);
-            cv::Point pt1(cvRound(x0 + imgDiagonal * (-b)), cvRound(y0 + imgDiagonal * (a)));
-            cv::Point pt2(cvRound(x0 - imgDiagonal * (-b)), cvRound(y0 - imgDiagonal * (a)));
-            cv::line(colorImage, pt1, pt2, cv::Scalar(0, 0, 255), 1, cv::LINE_AA); // Draw red lines
-        }
-        originalImage = colorImage; // Update originalImage only if lines were drawn
-    } else {
-        QMessageBox::information(this, "Hough Lines", "No lines detected with the given parameters.");
-        // Don't change originalImage, effectively cancelling the operation visually
-        // The state pushed to undo stack is the original image before attempting Hough.
-        // No need to pop here, user can undo if they want.
-    }
-
-    updateImage(); // Update display
+    setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
+        return ImageProcessing::detectHoughLines(edgeImage, dialog.getRho(),
+                                                 dialog.getThetaDegrees() * CV_PI / 180.0, dialog.getThreshold());
+    });
+    dialog.exec();
 }
 
 // ==========================================================================
@@ -1260,20 +1207,18 @@ void ImageViewer::closeEvent(QCloseEvent *event) {
             std::remove(mainWindow->openedImages.begin(), mainWindow->openedImages.end(), this),
             mainWindow->openedImages.end()
             );
-        // Optional: Update main window state if needed
-        // mainWindow->updateSomeUI();
     }
 
     // 3. Clean up other owned resources (like LUT if it wasn't parented)
-    // if (LUT && LUT->parent() != this) { // Example check if parenting isn't guaranteed
-    //     delete LUT; // Or LUT->deleteLater();
-    //     LUT = nullptr;
-    // }
+    if (LUT && LUT->parent() != this) { // Example check if parenting isn't guaranteed
+        delete LUT; // Or LUT->deleteLater();
+        LUT = nullptr;
+    }
     // Note: Widgets parented to 'this' (like LUT, imageLabel, zoomInput, menuBar)
     // will be deleted automatically by Qt's parent-child mechanism when 'this' is deleted.
     // Operations in operationsList might need explicit deletion if not parented.
-    // qDeleteAll(operationsList); // If operations are dynamically allocated and not parented elsewhere. Be cautious.
-    // operationsList.clear();
+    qDeleteAll(operationsList); // If operations are dynamically allocated and not parented elsewhere. Be cautious.
+    operationsList.clear();
 
     // 4. Accept the event to allow the window to close
     QWidget::closeEvent(event); // Call base class implementation

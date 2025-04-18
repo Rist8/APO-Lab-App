@@ -20,7 +20,7 @@
 // Constructor: Sets up the dialog for bitwise operations.
 // ==========================================================================
 BitwiseOperationDialog::BitwiseOperationDialog(QWidget *parent, const QVector<QWidget*>& openedImages)
-    : QDialog(parent), resultImage() {
+    : PreviewDialogBase(parent), resultImage() {
 
     setupUi(); // Create UI elements
 
@@ -41,9 +41,13 @@ BitwiseOperationDialog::BitwiseOperationDialog(QWidget *parent, const QVector<QW
         }
     }
 
+    connect(imageList, &QListWidget::currentItemChanged, this, &PreviewDialogBase::previewRequested);
     // Connect signals and slots
     connect(operationCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &BitwiseOperationDialog::updateUi);
+    connect(operationCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &PreviewDialogBase::previewRequested);
+    connect(this, &PreviewDialogBase::previewRequested, this, &BitwiseOperationDialog::processOperation);
     connect(processButton, &QPushButton::clicked, this, &BitwiseOperationDialog::processOperation);
+    connect(processButton, &QPushButton::clicked, this, &QDialog::accept);
     connect(cancelButton, &QPushButton::clicked, this, &QDialog::reject); // Connect cancel button
 
     updateUi(); // Set initial UI state (e.g., hide alpha)
@@ -81,10 +85,18 @@ void BitwiseOperationDialog::setupUi() {
     alphaSpin->setRange(0, 100);
     alphaSpin->setValue(50);
     alphaSpin->setSuffix("%");
+    connect(alphaSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, &PreviewDialogBase::previewRequested);
     alphaLayout->addWidget(alphaLabel);
     alphaLayout->addWidget(alphaSpin);
     alphaLayout->addStretch();
     mainLayout->addLayout(alphaLayout);
+
+
+    previewCheckBox = new QCheckBox("Preview");
+    previewCheckBox->setChecked(false); // default off
+    connect(previewCheckBox, &QCheckBox::checkStateChanged, this, &PreviewDialogBase::previewRequested);
+    mainLayout->addWidget(previewCheckBox);
+
 
     // Buttons layout
     QHBoxLayout *buttonLayout = new QHBoxLayout();
@@ -94,6 +106,7 @@ void BitwiseOperationDialog::setupUi() {
     buttonLayout->addWidget(processButton);
     buttonLayout->addWidget(cancelButton);
     mainLayout->addLayout(buttonLayout);
+
 
     setLayout(mainLayout);
 }
@@ -142,10 +155,6 @@ void BitwiseOperationDialog::processOperation() {
     // Perform the operation by calling the private helper
     performOperation(currentViewer, secondViewer); // Pass pointers
 
-    // If operation was successful (resultImage is not empty), accept the dialog
-    if (!resultImage.empty()) {
-        accept(); // Close dialog with QDialog::Accepted state
-    }
     // If performOperation failed, it should have shown a message, so we just stay in the dialog.
 }
 

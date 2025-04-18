@@ -1,49 +1,71 @@
 #include "directionselectiondialog.h"
-#include <QGridLayout> // Include necessary header
-#include <QPushButton> // Include necessary header
+#include <QGridLayout>
+#include <QPushButton>
+#include <QDialogButtonBox>
+#include <QElapsedTimer>
+#include <QDebug>
+#include <QMessageBox>
 
-// ==========================================================================
-// Group 3: UI Dialogs & Input
-// ==========================================================================
-// Constructor: Sets up the dialog with buttons for selecting edge direction.
-// ==========================================================================
-DirectionSelectionDialog::DirectionSelectionDialog(QWidget *parent) : QDialog(parent) {
+// Constructor
+DirectionSelectionDialog::DirectionSelectionDialog(QWidget *parent)
+    : PreviewDialogBase(parent), selectedDirection(-1) {
+
     setWindowTitle("Select Edge Detection Direction");
-    QGridLayout *layout = new QGridLayout(this);
 
-    // Unicode arrows for directions, plus a disabled center button
+    QVBoxLayout *mainLayout = new QVBoxLayout(this);
+    QGridLayout *gridLayout = new QGridLayout();
+
     QStringList directions = {"↖", "↑", "↗", "←", "•", "→", "↙", "↓", "↘"};
     int index = 0;
     for (int row = 0; row < 3; ++row) {
         for (int col = 0; col < 3; ++col) {
             QPushButton *btn = new QPushButton(directions[index], this);
-            btn->setFixedSize(50, 50); // Fixed size for square buttons
-            btn->setFont(QFont("Arial", 16)); // Make arrows larger
+            btn->setFixedSize(50, 50);
+            btn->setFont(QFont("Segoe UI Symbol", 16));
 
-            if (directions[index] == "•") { // Disable the center button
+            if (directions[index] == "•") {
                 btn->setEnabled(false);
             } else {
-                // Connect only enabled buttons
-                int direction = index; // Capture index for lambda
+                int direction = index;
                 connect(btn, &QPushButton::clicked, this, [this, direction]() {
-                    setDirection(direction);
+                    setDirection(direction); // Just set, don’t close
                 });
+                connect(btn, &QPushButton::clicked, this, &PreviewDialogBase::previewRequested);
             }
-            layout->addWidget(btn, row, col);
-            index++;
+            gridLayout->addWidget(btn, row, col);
+            ++index;
         }
     }
-    setLayout(layout);
-    adjustSize(); // Adjust dialog size to fit buttons
+
+    previewCheckBox = new QCheckBox("Preview", this);
+    previewCheckBox->setChecked(true);
+    connect(previewCheckBox, &QCheckBox::checkStateChanged, this, &PreviewDialogBase::previewRequested);
+
+    // Button box for OK/Cancel
+    QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    connect(buttonBox, &QDialogButtonBox::accepted, this, &DirectionSelectionDialog::onAccept);
+    connect(buttonBox, &QDialogButtonBox::rejected, this, &DirectionSelectionDialog::reject);
+
+    // Build layout
+    mainLayout->addLayout(gridLayout);
+    mainLayout->addWidget(previewCheckBox);
+    mainLayout->addWidget(buttonBox);
+
+    setLayout(mainLayout);
+    adjustSize();
 }
 
-// ==========================================================================
-// Group 3: UI Dialogs & Input
-// ==========================================================================
-// Slot called when a direction button is clicked. Emits the selected
-// direction signal and accepts the dialog.
-// ==========================================================================
+// When a direction is clicked, just store it
 void DirectionSelectionDialog::setDirection(int direction) {
-    emit directionSelected(direction); // Emit signal with the selected index
-    accept(); // Close the dialog with accept state
+    selectedDirection = direction;
+    emit previewRequested();
+}
+
+// On OK, emit if direction selected, else warn
+void DirectionSelectionDialog::onAccept() {
+    if (selectedDirection == -1) {
+        QMessageBox::warning(this, "No Direction Selected", "Please select a direction before clicking OK.");
+        return;
+    }
+    accept();
 }

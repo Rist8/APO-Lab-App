@@ -582,12 +582,46 @@ cv::Mat applySkeletonization(const cv::Mat& inputImage, StructuringElementType e
 // Group 10: Image Processing - Feature Detection
 // ==========================================================================
 
-std::vector<cv::Vec2f> detectHoughLines(const cv::Mat& binaryEdgeImage, double rho, double theta, int threshold) {
+cv::Mat detectHoughLines(const cv::Mat& binaryEdgeImage, double rho, double theta, int threshold) {
     std::vector<cv::Vec2f> lines;
-    if (!binaryEdgeImage.empty() && binaryEdgeImage.type() == CV_8UC1) {
-        cv::HoughLines(binaryEdgeImage, lines, rho, theta, threshold);
+    cv::Mat outputImage = binaryEdgeImage.clone();
+    if (!outputImage.empty() && outputImage.type() == CV_8UC1) {
+        cv::HoughLines(outputImage, lines, rho, theta, threshold);
     }
-    return lines;
+    // Prepare image for drawing lines (convert original to color if needed)
+    cv::Mat colorImage;
+    if (outputImage.channels() == 1) {
+        cv::cvtColor(outputImage, colorImage, cv::COLOR_GRAY2BGR);
+    } else if (outputImage.channels() == 3){
+        colorImage = outputImage.clone(); // Already BGR
+    } else if (outputImage.channels() == 4) {
+        cv::cvtColor(outputImage, colorImage, cv::COLOR_BGRA2BGR); // Drop alpha
+    } else {
+        QMessageBox::warning(nullptr, "Hough Draw Error", "Cannot draw lines on image with unsupported channel count.");
+        return cv::Mat();
+    }
+
+    // Draw detected lines
+    if (!lines.empty()) {
+        //QMessageBox::information(nullptr, "Hough Lines", "Detected " + QString::fromStdString(std::to_string(lines.size())) + " lines.");
+        for (size_t i = 0; i < lines.size(); i++) {
+            float r = lines[i][0], t = lines[i][1];
+            double a = std::cos(t), b = std::sin(t);
+            double x0 = a * r, y0 = b * r;
+            // Calculate points far enough to span the image diagonal for safety
+            double imgDiagonal = std::sqrt(colorImage.cols*colorImage.cols + colorImage.rows*colorImage.rows);
+            cv::Point pt1(cvRound(x0 + imgDiagonal * (-b)), cvRound(y0 + imgDiagonal * (a)));
+            cv::Point pt2(cvRound(x0 - imgDiagonal * (-b)), cvRound(y0 - imgDiagonal * (a)));
+            cv::line(colorImage, pt1, pt2, cv::Scalar(0, 0, 255), 1, cv::LINE_AA); // Draw red lines
+        }
+        outputImage = colorImage; // Update originalImage only if lines were drawn
+    } else {
+        QMessageBox::information(nullptr, "Hough Lines", "No lines detected with the given parameters.");
+        // Don't change originalImage, effectively cancelling the operation visually
+        // The state pushed to undo stack is the original image before attempting Hough.
+        // No need to pop here, user can undo if they want.
+    }
+    return outputImage;
 }
 
 

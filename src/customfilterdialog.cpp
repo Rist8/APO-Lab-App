@@ -8,7 +8,7 @@
 #include <QGridLayout>
 #include <QVector>
 
-CustomFilterDialog::CustomFilterDialog(QWidget *parent) : QDialog(parent) {
+CustomFilterDialog::CustomFilterDialog(QWidget *parent) : PreviewDialogBase(parent) {
     setWindowTitle("Custom Filter Input");
     setFixedSize(500, 500);
 
@@ -23,6 +23,11 @@ CustomFilterDialog::CustomFilterDialog(QWidget *parent) : QDialog(parent) {
     // Grid for kernel input
     kernelLayout = new QGridLayout();
     mainLayout->addLayout(kernelLayout);
+
+    previewCheckBox = new QCheckBox("Preview");
+    previewCheckBox->setChecked(false); // default off
+    connect(previewCheckBox, &QCheckBox::checkStateChanged, this, &PreviewDialogBase::previewRequested);
+    mainLayout->addWidget(previewCheckBox);
 
     QPushButton *okButton = new QPushButton("OK");
     QPushButton *cancelButton = new QPushButton("Cancel");
@@ -61,6 +66,7 @@ void CustomFilterDialog::updateKernelSize() {
             spinBox->setValue(0);
             spinBox->setFixedSize(spinBoxSize, 45);
             spinBox->setAlignment(Qt::AlignCenter); // Ensure text is centered
+            connect(spinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &PreviewDialogBase::previewRequested);
             kernelLayout->addWidget(spinBox, i, j);
             row.append(spinBox);
         }

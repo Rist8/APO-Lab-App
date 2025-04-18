@@ -47,6 +47,7 @@ set(PROJECT_SOURCES
     src/bitwiseoperationdialog.cpp
     include/houghdialog.h
     src/houghdialog.cpp
+    include/previewdialogbase.h
 )
 
 

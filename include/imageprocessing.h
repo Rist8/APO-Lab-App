@@ -328,9 +328,9 @@ cv::Mat applySkeletonization(const cv::Mat& inputImage, StructuringElementType e
      * @param rho Distance resolution of the accumulator in pixels.
      * @param theta Angle resolution of the accumulator in radians.
      * @param threshold Accumulator threshold parameter. Only lines receiving more votes than threshold are returned.
-     * @return A vector of Vec2f containing the parameters (rho, theta) of the detected lines.
+     * @return An image with the detected lines drawn.
      */
-std::vector<cv::Vec2f> detectHoughLines(const cv::Mat& binaryEdgeImage, double rho, double theta, int threshold);
+cv::Mat detectHoughLines(const cv::Mat& binaryEdgeImage, double rho, double theta, int threshold);
 
 
 } // namespace ImageProcessing

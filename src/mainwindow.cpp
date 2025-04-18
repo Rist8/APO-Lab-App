@@ -100,7 +100,7 @@ void MainWindow::setBorderOption(int option, QAction *selectedAction) {
 // Opens a file dialog to load an image and creates an ImageViewer for it.
 // ==========================================================================
 void MainWindow::openImage() {
-    QString filePath = QFileDialog::getOpenFileName(this, "Open Image", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif)");
+    QString filePath = QFileDialog::getOpenFileName(this, "Open Image", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif *.tiff)");
     if (!filePath.isEmpty()) {
         QByteArray imageData;
         QFile file(filePath);

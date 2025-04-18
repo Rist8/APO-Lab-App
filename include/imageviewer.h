@@ -5,6 +5,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QTableWidget>
+#include <qcheckbox.h>
 #include <stack>
 #include <vector>
 #include <functional>
@@ -23,6 +24,7 @@
 #include "histogramwidget.h"
 #include "mainwindow.h" // Forward declaration might be sufficient if only pointers used
 #include "imageoperation.h" // Forward declaration might be sufficient
+#include "previewdialogbase.h"
 
 // Forward declarations
 class MainWindow;
@@ -60,6 +62,27 @@ public:
     void redo();
     void pushToUndoStack();  // Call before modifying `originalImage` via an operation
 
+
+    template<typename Func>
+    void setupPreview(PreviewDialogBase* dialog, QCheckBox* previewCheckBox, Func generator) {
+        connect(dialog, &QDialog::finished, this, [&]() {
+            if (dialog->result() == QDialog::Accepted) {
+                pushToUndoStack();
+                originalImage = generator();
+            }
+            updateImage();
+        });
+
+        connect(dialog, &PreviewDialogBase::previewRequested, this, [=]() {
+            if (previewCheckBox->isChecked()) {
+                cv::Mat preview = generator();
+                showTempImage(preview);
+            } else {
+                updateImage();
+            }
+        });
+    }
+
 protected:
     // --- Event Handlers ---
     void wheelEvent(QWheelEvent *event) override;
@@ -72,7 +95,6 @@ private slots:
     void showHistogram(); // Slot to show the histogram in a separate window
     void onHistogramClosed(); // Slot connected to histogram window's destroyed signal
     void toggleLUT(); // Shows/hides the LUT table
-    void setPrewittDirection(int direction); // Slot to receive direction from dialog
 
     // --- Operation Slots (Wrappers) ---
     // These slots are connected to menu actions and call the actual processing functions.
