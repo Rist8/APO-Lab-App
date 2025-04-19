@@ -91,7 +91,9 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y python3-pip
+        pip install aqtinstall
         sudo apt-get install -y libopencv-dev
+        exec bash
         aqt install-qt linux desktop 6.8.2 linux_gcc_64 -m qtcharts
         mkdir -p /home/runner/aptcache
         sudo find /var/cache/apt/archives/ -type f -name '*.deb' -size -20M -exec cp --parents {} /home/runner/aptcache/ \;
