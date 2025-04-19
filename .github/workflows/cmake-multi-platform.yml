@@ -135,7 +135,8 @@ jobs:
               -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
               -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
       env:
-        Qt6_DIR: /home/runner/work/APO-Lab-App/APO-Lab-App/6.8.2/gcc_64/lib/cmake
+        QT_DIR: /home/runner/work/APO-Lab-App/APO-Lab-App/6.8.2/gcc_64/lib/cmake
+        Qt6_DIR: /home/runner/work/APO-Lab-App/APO-Lab-App/6.8.2/gcc_64/lib/cmake/Qt6
 
     - name: Build
       run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
