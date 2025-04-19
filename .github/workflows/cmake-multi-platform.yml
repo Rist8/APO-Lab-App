@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        qt-version: [5.15.2]
+        qt-version: [6.8.2]
         os: [ubuntu-latest, windows-latest]
         build_type: [Release]
         c_compiler: [gcc, clang, cl]
@@ -71,13 +71,13 @@ jobs:
       if: matrix.os == 'windows-latest'
       uses: actions/cache@v3
       with:
-        path: 5.15.2
-        key: windows-qt-5.15.2
+        path: 6.8.2
+        key: windows-qt-6.8.2
 
     - name: Install Qt on Windows
       if: matrix.os == 'windows-latest'
       run: |
-        aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 -m qtcharts
+        aqt install-qt windows desktop 6.8.2 win64_msvc2019_64 -m qtcharts
 
     - name: Restore cached APT .deb files
       if: matrix.os == 'ubuntu-latest'
@@ -90,7 +90,7 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools libqt5charts5-dev libopencv-dev
+        sudo apt-get install -y qt6-base-dev libqt6widgets6 libqt6charts6 qt6-charts-dev libopencv-dev
         mkdir -p /home/runner/aptcache
         sudo find /var/cache/apt/archives/ -type f -name '*.deb' -size -20M -exec cp --parents {} /home/runner/aptcache/ \;
         sudo chown -R $(whoami) /home/runner/aptcache
@@ -114,9 +114,9 @@ jobs:
     - name: Configure CMake for Windows
       if: matrix.os == 'windows-latest'
       run: |
-        cmake -B ${{ steps.strings.outputs.build-output-dir }} -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DCMAKE_PREFIX_PATH=D:\a\APO-Lab-App\APO-Lab-App\5.15.2\msvc2019_64\lib\cmake
+        cmake -B ${{ steps.strings.outputs.build-output-dir }} -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DCMAKE_PREFIX_PATH=D:\a\APO-Lab-App\APO-Lab-App\6.8.2\msvc2019_64\lib\cmake
       env:
-        QT_DIR: D:\a\APO-Lab-App\APO-Lab-App\5.15.2\msvc2019_64\lib\cmake
+        QT_DIR: D:\a\APO-Lab-App\APO-Lab-App\6.8.2\msvc2019_64\lib\cmake
 
 
     - name: Configure CMake for Ubuntu
