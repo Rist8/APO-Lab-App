@@ -90,7 +90,7 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y qt6-base-dev libqt6widgets6 qt6-base libqt6charts6 qt6-charts-dev libopencv-dev
+        sudo apt-get install -y qt6-base-dev libqt6widgets6 libqt6charts6 qt6-charts-dev libopencv-dev
         mkdir -p /home/runner/aptcache
         sudo find /var/cache/apt/archives/ -type f -name '*.deb' -size -20M -exec cp --parents {} /home/runner/aptcache/ \;
         sudo chown -R $(whoami) /home/runner/aptcache
