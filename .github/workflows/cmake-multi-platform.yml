@@ -133,10 +133,8 @@ jobs:
         cmake -B ${{ steps.strings.outputs.build-output-dir }} \
               -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
               -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
+              -DCMAKE_PREFIX_PATH="/home/runner/work/APO-Lab-App/APO-Lab-App/6.8.2/gcc_64/lib/cmake" \
               -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-      env:
-        QT_DIR: /home/runner/work/APO-Lab-App/APO-Lab-App/6.8.2/gcc_64/lib/cmake
-        Qt6_DIR: /home/runner/work/APO-Lab-App/APO-Lab-App/6.8.2/gcc_64/lib/cmake/Qt6
 
     - name: Build
       run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
