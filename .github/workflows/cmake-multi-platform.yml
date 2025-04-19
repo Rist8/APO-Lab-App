@@ -94,6 +94,8 @@ jobs:
         pip install aqtinstall
         sudo apt-get install -y libopencv-dev
         exec bash
+        echo -------------------------------------------------------------------------------------------------------------
+        pwd
         aqt install-qt linux desktop 6.8.2 linux_gcc_64 -m qtcharts
         mkdir -p /home/runner/aptcache
         sudo find /var/cache/apt/archives/ -type f -name '*.deb' -size -20M -exec cp --parents {} /home/runner/aptcache/ \;
@@ -126,7 +128,6 @@ jobs:
     - name: Configure CMake for Ubuntu
       if: matrix.os == 'ubuntu-latest'
       run: |
-        ls
         cmake -B ${{ steps.strings.outputs.build-output-dir }} \
               -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
               -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
