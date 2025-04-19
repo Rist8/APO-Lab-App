@@ -9,16 +9,16 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets Core Gui Charts)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Core Gui Charts)
+find_package(QT NAMES Qt6 REQUIRED COMPONENTS Widgets Core Gui Charts)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Core Gui Charts)
 if(WIN32)
     set(OpenCV_DIR
         "C:/opencv/build/x64/vc16/lib"
     )
 endif()
 find_package(OpenCV REQUIRED)
-include_directories(${OpenCV_INCLUDE_DIRS} include ${Qt5Widgets_INCLUDE_DIRS})
-link_directories(${Qt5Widgets_LIBRARY_DIRS})
+include_directories(${OpenCV_INCLUDE_DIRS} include ${Qt6Widgets_INCLUDE_DIRS})
+link_directories(${Qt6Widgets_LIBRARY_DIRS})
 
 
 
