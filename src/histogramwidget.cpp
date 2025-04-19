@@ -219,7 +219,7 @@ void HistogramWidget::mouseMoveEvent(QMouseEvent *event) {
     // Show tooltip if hovering over a valid bin and data exists
     if (hoveredBin != -1 && hoveredBin < histogramData.size()) {
         int count = histogramData[hoveredBin];
-        QToolTip::showText(event->globalPos(),
+        QToolTip::showText(event->globalPosition().toPoint(),
                            QString("Intensity: %1\nCount: %2").arg(hoveredBin).arg(count),
                            this, rect()); // Show tooltip relative to widget
     } else {
