@@ -122,9 +122,7 @@ jobs:
     - name: Configure CMake for Windows
       if: matrix.os == 'windows-latest'
       run: |
-        cmake -B ${{ steps.strings.outputs.build-output-dir }} -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DCMAKE_PREFIX_PATH=D:\a\APO-Lab-App\APO-Lab-App\6.8.2\msvc2019_64\lib\cmake
-      env:
-        QT_DIR: D:\a\APO-Lab-App\APO-Lab-App\6.8.2\msvc2022_64\lib\cmake
+        cmake -B ${{ steps.strings.outputs.build-output-dir }} -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DCMAKE_PREFIX_PATH=D:\a\APO-Lab-App\APO-Lab-App\6.8.2\msvc2022_64\lib\cmake
 
 
     - name: Configure CMake for Ubuntu
