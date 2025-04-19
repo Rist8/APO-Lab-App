@@ -332,6 +332,50 @@ cv::Mat applySkeletonization(const cv::Mat& inputImage, StructuringElementType e
      */
 cv::Mat detectHoughLines(const cv::Mat& binaryEdgeImage, double rho, double theta, int threshold);
 
+// ==========================================================================
+// Group 11: Image Segmentation - Thresholding
+// ==========================================================================
+
+
+/**
+     * @brief If the pixel value is smaller than or equal to the threshold, it is set to 0, otherwise it is set to a maximum value.
+     * @param inputImage The input grayscale image.
+     * @param threshold Threshold value.
+     * @return An image with the threshold applied.
+     */
+cv::Mat applyGlobalThreshold(const cv::Mat& inputImage, int threshold);
+
+/**
+     * @brief Determines the threshold for a pixel based on a small region around it and thresholds it.
+     * @param inputImage The input grayscale image.
+     * @return An image with the adaptive threshold applied.
+     */
+cv::Mat applyAdaptiveThreshold(const cv::Mat& inputImage);
+
+/**
+     * @brief Otsu's method determines an optimal global threshold value from the image histogram and then thresholds an image.
+     * @param inputImage The input grayscale image.
+     * @return An image with the Otsu Threshold applied.
+     */
+cv::Mat applyOtsuThreshold(const cv::Mat& inputImage);
+
+/**
+     * @brief Magic wand segmentation algorithm which puts all nearby pixels with values within tolerance into one group.
+     * @param inputImageRaw The input image.
+     * @param seed Starting point.
+     * @param tolerance Tolerance value.
+     * @return A magic wand segmented image.
+     */
+cv::Mat magicWandSegmentation(const cv::Mat& inputImageRaw, const cv::Point& seed, int tolerance);
+
+/**
+     * @brief Grab cut segmentation algorithm which cuts the object from the background.
+     * @param inputImage The input grayscale image.
+     * @param rect The rectangle area on which the operation will be applied.
+     * @param iterCount Operation iterations count.
+     * @return A grab cutted image.
+     */
+cv::Mat grabCutSegmentation(const cv::Mat& inputImage, const cv::Rect& rect, int iterCount = 5);
 
 } // namespace ImageProcessing
 

@@ -28,15 +28,15 @@ RangeStretchingDialog::RangeStretchingDialog(QWidget *parent) : PreviewDialogBas
 
     // Set ranges for SpinBoxes and Sliders
     p1SpinBox->setRange(0, 255); p1Slider->setRange(0, 255);
-    p2SpinBox->setRange(0, 255); p2Slider->setRange(0, 255);
+    p2SpinBox->setRange(1, 256); p2Slider->setRange(1, 256);
     q3SpinBox->setRange(0, 255); q3Slider->setRange(0, 255);
-    q4SpinBox->setRange(0, 255); q4Slider->setRange(0, 255);
+    q4SpinBox->setRange(1, 256); q4Slider->setRange(1, 256);
 
     // Set reasonable default values
     p1SpinBox->setValue(50);
     p2SpinBox->setValue(200);
     q3SpinBox->setValue(0);
-    q4SpinBox->setValue(255);
+    q4SpinBox->setValue(256);
 
     // Sync slider values with spinbox defaults
     p1Slider->setValue(p1SpinBox->value());

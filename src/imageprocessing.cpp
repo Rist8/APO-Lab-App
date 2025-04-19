@@ -1,7 +1,7 @@
 #include "imageprocessing.h"
 #include <vector>
 #include <cmath>
-#include <numeric> // For std::accumulate
+#include <QMessageBox>
 #include <algorithm> // For std::find_if, std::max_element
 
 namespace ImageProcessing {
@@ -13,6 +13,7 @@ namespace ImageProcessing {
 cv::Mat binarise(const cv::Mat& inputImage, double thresholdValue, double maxValue) {
     cv::Mat outputImage;
     if (inputImage.empty() || inputImage.channels() != 1) {
+        QMessageBox::warning(nullptr, "Make Binary Error", "Input image is empty or not grayscale.");
         return outputImage; // Return empty if not grayscale
     }
     cv::threshold(inputImage, outputImage, thresholdValue, maxValue, cv::THRESH_BINARY);
@@ -22,6 +23,7 @@ cv::Mat binarise(const cv::Mat& inputImage, double thresholdValue, double maxVal
 cv::Mat convertToGrayscale(const cv::Mat& inputImage) {
     cv::Mat outputImage;
     if (inputImage.empty()) {
+        QMessageBox::warning(nullptr, "Convert To Grayscale Error", "Input image is empty.");
         return outputImage;
     }
     if (inputImage.channels() == 3) {
@@ -36,7 +38,10 @@ cv::Mat convertToGrayscale(const cv::Mat& inputImage) {
 }
 
 cv::Mat convertToColor(const cv::Mat &input) {
-    if (input.empty()) return cv::Mat();
+    if (input.empty()) {
+        QMessageBox::warning(nullptr, "Convert To Color Error", "Input image is empty.");
+        return cv::Mat();
+    }
     cv::Mat output;
     if (input.channels() == 1) {
         cv::cvtColor(input, output, cv::COLOR_GRAY2BGR);
@@ -83,6 +88,7 @@ cv::Mat convertToLab(const cv::Mat& inputImage) {
 
 cv::Mat applyNegation(const cv::Mat& inputImage) {
     if (inputImage.empty()) {
+        QMessageBox::warning(nullptr, "Negation Error", "Input image is empty.");
         return cv::Mat();
     }
     return cv::Scalar::all(255) - inputImage;
@@ -90,9 +96,11 @@ cv::Mat applyNegation(const cv::Mat& inputImage) {
 
 cv::Mat applyRangeStretching(const cv::Mat& inputImage, int p1, int p2, int q3, int q4) {
     if (inputImage.empty() || inputImage.channels() != 1) {
+        QMessageBox::warning(nullptr, "Range Stretching Error", "Input image is empty or not grayscale.");
         return inputImage.clone(); // Return copy if invalid input
     }
     if (p1 >= p2 || q3 >= q4) {
+        QMessageBox::warning(nullptr, "Range Stretching Error", "Invalid params were given.");
         // Consider logging a warning or throwing an exception for invalid params
         return inputImage.clone();
     }
@@ -119,6 +127,7 @@ cv::Mat applyRangeStretching(const cv::Mat& inputImage, int p1, int p2, int q3, 
 
 cv::Mat applyPosterization(const cv::Mat& inputImage, int levels) {
     if (inputImage.empty() || inputImage.channels() != 1 || levels < 2 || levels > 256) {
+        QMessageBox::warning(nullptr, "Posterization Error", "Input image is empty or not grayscale.");
         return inputImage.clone(); // Return copy if invalid input
     }
 
@@ -205,6 +214,7 @@ cv::Mat applyBlending(const cv::Mat& img1, const cv::Mat& img2, double alpha, do
 
 cv::Mat stretchHistogram(const cv::Mat& inputImage) {
     if (inputImage.empty() || inputImage.channels() != 1) {
+        QMessageBox::warning(nullptr, "Stretch Histogram Error", "Input image is empty or not grayscale.");
         return inputImage.clone();
     }
     cv::Mat outputImage;
@@ -226,6 +236,7 @@ cv::Mat stretchHistogram(const cv::Mat& inputImage) {
 
 cv::Mat equalizeHistogram(const cv::Mat& inputImage) {
     if (inputImage.empty() || inputImage.channels() != 1) {
+        QMessageBox::warning(nullptr, "Equalize Histogram Error", "Input image is empty or not grayscale.");
         return inputImage.clone();
     }
 
@@ -276,6 +287,7 @@ cv::Mat equalizeHistogram(const cv::Mat& inputImage) {
 
 cv::Mat applyBoxBlur(const cv::Mat& inputImage, int kernelSize, int borderOption) {
     if (inputImage.empty()) {
+        QMessageBox::warning(nullptr, "Box Blur Error", "Input image is empty.");
         return cv::Mat();
     }
     cv::Mat outputImage;
@@ -285,6 +297,7 @@ cv::Mat applyBoxBlur(const cv::Mat& inputImage, int kernelSize, int borderOption
 
 cv::Mat applyGaussianBlur(const cv::Mat& inputImage, int kernelSize, double sigmaX, double sigmaY, int borderOption) {
     if (inputImage.empty()) {
+        QMessageBox::warning(nullptr, "Gaussian Blur Error", "Input image is empty.");
         return cv::Mat();
     }
     cv::Mat outputImage;
@@ -294,6 +307,7 @@ cv::Mat applyGaussianBlur(const cv::Mat& inputImage, int kernelSize, double sigm
 
 cv::Mat applySobelEdgeDetection(const cv::Mat& inputImage, int kernelSize, double scale, double delta, int borderOption) {
     if (inputImage.empty() || inputImage.channels() != 1) {
+        QMessageBox::warning(nullptr, "Sobel Edge Detection Error", "Input image is empty or not grayscale.");
         return inputImage.clone();
     }
     cv::Mat gradX, gradY;
@@ -317,6 +331,7 @@ cv::Mat applySobelEdgeDetection(const cv::Mat& inputImage, int kernelSize, doubl
 
 cv::Mat applyLaplacianEdgeDetection(const cv::Mat& inputImage, int kernelSize, double scale, double delta, int borderOption) {
     if (inputImage.empty() || inputImage.channels() != 1) {
+        QMessageBox::warning(nullptr, "Laplacian Edge Detection Error", "Input image is empty or not grayscale.");
         return inputImage.clone();
     }
     cv::Mat laplacian_16s, outputImage;
@@ -327,6 +342,7 @@ cv::Mat applyLaplacianEdgeDetection(const cv::Mat& inputImage, int kernelSize, d
 
 cv::Mat applyCannyEdgeDetection(const cv::Mat& inputImage, double threshold1, double threshold2, int apertureSize, bool L2gradient) {
     if (inputImage.empty() || inputImage.channels() != 1) {
+        QMessageBox::warning(nullptr, "Canny Edge Detection Error", "Input image is empty or not grayscale.");
         return inputImage.clone();
     }
     cv::Mat outputImage;
@@ -336,6 +352,7 @@ cv::Mat applyCannyEdgeDetection(const cv::Mat& inputImage, double threshold1, do
 
 cv::Mat applySharpening(const cv::Mat& inputImage, int option, int borderOption) {
     if (inputImage.empty()) {
+        QMessageBox::warning(nullptr, "Sharpening Filter Error", "Input image is empty.");
         return cv::Mat();
     }
     cv::Mat kernel;
@@ -369,6 +386,7 @@ cv::Mat applySharpening(const cv::Mat& inputImage, int option, int borderOption)
 
 cv::Mat applyPrewittEdgeDetection(const cv::Mat& inputImage, int direction, int borderOption) {
     if (inputImage.empty() || inputImage.channels() != 1) {
+        QMessageBox::warning(nullptr, "Prewitt Edge Detection Error", "Input image is empty or not grayscale.");
         return inputImage.clone();
     }
 
@@ -394,6 +412,7 @@ cv::Mat applyPrewittEdgeDetection(const cv::Mat& inputImage, int direction, int 
 
 cv::Mat applyCustomFilter(const cv::Mat& inputImage, cv::Mat kernel, bool normalize, int borderOption) {
     if (inputImage.empty() || kernel.empty()) {
+        QMessageBox::warning(nullptr, "Custom Filter Error", "Input image or kernel is empty.");
         return inputImage.clone();
     }
     // Ensure kernel is float
@@ -416,6 +435,7 @@ cv::Mat applyCustomFilter(const cv::Mat& inputImage, cv::Mat kernel, bool normal
 // Custom implementation of Median Filtering to support border handling
 cv::Mat applyMedianFilter(const cv::Mat& inputImage, int kernelSize, int borderType) {
     if (inputImage.empty() || inputImage.channels() != 1 || kernelSize <= 1 || kernelSize % 2 == 0) {
+        QMessageBox::warning(nullptr, "Median Filter Error", "Input image is empty.");
         return inputImage.clone();
     }
 
@@ -449,6 +469,7 @@ cv::Mat applyMedianFilter(const cv::Mat& inputImage, int kernelSize, int borderT
 
 cv::Mat applyTwoStepFilter(const cv::Mat& inputImage, const cv::Mat& kernel1, const cv::Mat& kernel2, int borderOption) {
     if (inputImage.empty() || kernel1.empty() || kernel2.empty() || kernel1.size() != cv::Size(3,3) || kernel2.size() != cv::Size(3,3)) {
+        QMessageBox::warning(nullptr, "Two Step Filter Error", "Input image is empty or input kernels are incorrect.");
         return inputImage.clone();
     }
 
@@ -509,6 +530,7 @@ cv::Mat getStructuringElement(StructuringElementType type) {
 
 cv::Mat applyErosion(const cv::Mat& inputImage, StructuringElementType elementType, int iterations, int borderOption) {
     if (inputImage.empty()) {
+        QMessageBox::warning(nullptr, "Erosion Error", "Input image is empty.");
         return cv::Mat();
     }
     cv::Mat element = getStructuringElement(elementType);
@@ -522,6 +544,7 @@ cv::Mat applyErosion(const cv::Mat& inputImage, StructuringElementType elementTy
 
 cv::Mat applyDilation(const cv::Mat& inputImage, StructuringElementType elementType, int iterations, int borderOption) {
     if (inputImage.empty()) {
+        QMessageBox::warning(nullptr, "Dilation Error", "Input image is empty.");
         return cv::Mat();
     }
     cv::Mat element = getStructuringElement(elementType);
@@ -532,6 +555,7 @@ cv::Mat applyDilation(const cv::Mat& inputImage, StructuringElementType elementT
 
 cv::Mat applyOpening(const cv::Mat& inputImage, StructuringElementType elementType, int iterations, int borderOption) {
     if (inputImage.empty()) {
+        QMessageBox::warning(nullptr, "Opening Error", "Input image is empty.");
         return cv::Mat();
     }
     cv::Mat element = getStructuringElement(elementType);
@@ -542,6 +566,7 @@ cv::Mat applyOpening(const cv::Mat& inputImage, StructuringElementType elementTy
 
 cv::Mat applyClosing(const cv::Mat& inputImage, StructuringElementType elementType, int iterations, int borderOption) {
     if (inputImage.empty()) {
+        QMessageBox::warning(nullptr, "Closing Error", "Input image is empty.");
         return cv::Mat();
     }
     cv::Mat element = getStructuringElement(elementType);
@@ -552,6 +577,7 @@ cv::Mat applyClosing(const cv::Mat& inputImage, StructuringElementType elementTy
 
 cv::Mat applySkeletonization(const cv::Mat& inputImage, StructuringElementType elementType) {
     if (inputImage.empty()) {
+        QMessageBox::warning(nullptr, "Skeletonization Error", "Input image is empty.");
         return cv::Mat();
     }
     // Ensure image is binary (0 or 255)
@@ -582,7 +608,12 @@ cv::Mat applySkeletonization(const cv::Mat& inputImage, StructuringElementType e
 // Group 10: Image Processing - Feature Detection
 // ==========================================================================
 
+
 cv::Mat detectHoughLines(const cv::Mat& binaryEdgeImage, double rho, double theta, int threshold) {
+    if (binaryEdgeImage.empty()) {
+        QMessageBox::warning(nullptr, "Hough Lines Error", "Input image is empty.");
+        return cv::Mat();
+    }
     std::vector<cv::Vec2f> lines;
     cv::Mat outputImage = binaryEdgeImage.clone();
     if (!outputImage.empty() && outputImage.type() == CV_8UC1) {
@@ -623,6 +654,156 @@ cv::Mat detectHoughLines(const cv::Mat& binaryEdgeImage, double rho, double thet
     }
     return outputImage;
 }
+
+cv::Mat applyGlobalThreshold(const cv::Mat& inputImage, int threshold) {
+    cv::Mat resultImage;
+    cv::threshold(inputImage, resultImage, threshold, 255, cv::ThresholdTypes::THRESH_BINARY);
+    return resultImage;
+}
+
+cv::Mat applyAdaptiveThreshold(const cv::Mat& inputImage) {
+    cv::Mat resultImage;
+    cv::adaptiveThreshold(inputImage, resultImage, 255,
+                          cv::AdaptiveThresholdTypes::ADAPTIVE_THRESH_MEAN_C,
+                          cv::ThresholdTypes::THRESH_BINARY, 11, 2);
+    return resultImage;
+}
+
+cv::Mat applyOtsuThreshold(const cv::Mat& inputImage) {
+    cv::Mat resultImage;
+    cv::threshold(inputImage, resultImage, 0, 255, cv::ThresholdTypes::THRESH_BINARY | cv::THRESH_OTSU);
+    return resultImage;
+}
+
+#include <queue>
+
+// Magic Wand segmentation supporting both grayscale and RGB images
+cv::Mat magicWandSegmentation(const cv::Mat& inputImage, const cv::Point& seed, int tolerance) {
+    if (inputImage.empty()) {
+        QMessageBox::warning(nullptr, "Magic Wand Error", "Input image is empty.");
+        return cv::Mat();
+    }
+
+    cv::Mat resultImage;
+
+    // Convert BGRA to BGR if needed
+    if (inputImage.type() == CV_8UC4) {
+        cv::cvtColor(inputImage, resultImage, cv::COLOR_BGRA2BGR);
+    } else {
+        resultImage = inputImage;
+    }
+
+    CV_Assert(resultImage.type() == CV_8UC1 || resultImage.type() == CV_8UC3);
+
+    cv::Mat visited = cv::Mat::zeros(resultImage.size(), CV_8U);
+    cv::Mat mask = cv::Mat::zeros(resultImage.size(), CV_8U);
+
+    std::queue<cv::Point> queue;
+    queue.push(seed);
+    visited.at<uchar>(seed) = 255;
+    mask.at<uchar>(seed) = 255;
+
+    const int dx[] = {-1, 0, 1, 0};
+    const int dy[] = {0, -1, 0, 1};
+
+    if (resultImage.type() == CV_8UC1) {
+        uchar seedVal = resultImage.at<uchar>(seed);
+
+        while (!queue.empty()) {
+            cv::Point p = queue.front(); queue.pop();
+
+            for (int k = 0; k < 4; ++k) {
+                int nx = p.x + dx[k];
+                int ny = p.y + dy[k];
+
+                if (nx >= 0 && ny >= 0 && nx < resultImage.cols && ny < resultImage.rows) {
+                    if (!visited.at<uchar>(ny, nx)) {
+                        uchar val = resultImage.at<uchar>(ny, nx);
+                        if (std::abs(val - seedVal) <= tolerance) {
+                            visited.at<uchar>(ny, nx) = 255;
+                            mask.at<uchar>(ny, nx) = 255;
+                            queue.push(cv::Point(nx, ny));
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        cv::Vec3b seedVal = resultImage.at<cv::Vec3b>(seed);
+
+        while (!queue.empty()) {
+            cv::Point p = queue.front(); queue.pop();
+
+            for (int k = 0; k < 4; ++k) {
+                int nx = p.x + dx[k];
+                int ny = p.y + dy[k];
+
+                if (nx >= 0 && ny >= 0 && nx < resultImage.cols && ny < resultImage.rows) {
+                    if (!visited.at<uchar>(ny, nx)) {
+                        cv::Vec3b val = resultImage.at<cv::Vec3b>(ny, nx);
+                        if (tolerance == 0) {
+                            if (val == seedVal) {
+                                visited.at<uchar>(ny, nx) = 255;
+                                mask.at<uchar>(ny, nx) = 255;
+                                queue.push(cv::Point(nx, ny));
+                            }
+                        } else {
+                            int dr = val[0] - seedVal[0];
+                            int dg = val[1] - seedVal[1];
+                            int db = val[2] - seedVal[2];
+                            int distSq = dr * dr + dg * dg + db * db;
+                            if (distSq <= tolerance * tolerance) {
+                                visited.at<uchar>(ny, nx) = 255;
+                                mask.at<uchar>(ny, nx) = 255;
+                                queue.push(cv::Point(nx, ny));
+                            }
+                        }
+
+                    }
+                }
+            }
+        }
+    }
+
+    return mask;
+}
+
+cv::Mat grabCutSegmentation(const cv::Mat& inputImage, const cv::Rect& rect, int iterCount) {
+    if (inputImage.empty()) {
+        QMessageBox::warning(nullptr, "Grab Cut Error", "Input image is empty.");
+        return cv::Mat();
+    }
+
+    cv::Mat image;
+    // Convert to BGR if inputImage is grayscale or has alpha
+    if (inputImage.channels() == 1) {
+        cv::cvtColor(inputImage, image, cv::COLOR_GRAY2BGR);
+    } else if (inputImage.channels() == 4) {
+        cv::cvtColor(inputImage, image, cv::COLOR_BGRA2BGR);
+    } else if (inputImage.channels() == 3) {
+        image = inputImage.clone();
+    } else {
+        throw std::invalid_argument("Unsupported image format for GrabCut");
+    }
+
+    // Initialize mask and models
+    cv::Mat mask(image.size(), CV_8UC1, cv::GC_BGD); // default: background
+    cv::Mat bgdModel, fgdModel;
+
+    // Apply GrabCut
+    cv::grabCut(image, mask, rect, bgdModel, fgdModel, iterCount, cv::GC_INIT_WITH_RECT);
+
+    // Convert result mask to binary foreground mask
+    cv::Mat binMask = (mask == cv::GC_FGD) | (mask == cv::GC_PR_FGD);
+
+    // Create output: keep only foreground
+    cv::Mat result(image.size(), image.type(), cv::Scalar(0, 0, 0));
+    image.copyTo(result, binMask);
+
+    return result;
+}
+
+
 
 
 } // namespace ImageProcessing

@@ -2,6 +2,8 @@
 #include "imageprocessing.h" // Include the new algorithms header
 #include "clickablelabel.h"
 #include "houghdialog.h"
+#include "inputdialog.h"
+#include "pointselectiondialog.h"
 #include "rangestretchingdialog.h"
 #include "customfilterdialog.h"
 #include "twostepfilterdialog.h"
@@ -30,11 +32,11 @@
 #include <string>
 #include <vector>
 
-// ==========================================================================
-// Group 2: Image Viewer Core & Management
-// ==========================================================================
+
+// ======================================================================
+// `Constructor & Core Management`
+// ======================================================================
 // Constructor: Sets up the image viewer window (image label, layout, menu, LUT).
-// ==========================================================================
 ImageViewer::ImageViewer(const cv::Mat &image, const QString &title, QWidget *parent, QPoint position, MainWindow *mainWindow)
     : QWidget(parent), originalImage(image.clone()), currentScale(1.0f), histogramWindow(nullptr), mainWindow(mainWindow) { // Initialize histogramWindow to nullptr
 
@@ -67,21 +69,25 @@ ImageViewer::ImageViewer(const cv::Mat &image, const QString &title, QWidget *pa
     imageLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     // Display initial image later in constructor after layout is set
 
-    mainLayout = new QVBoxLayout(this); // Initialize member layout
+    mainLayout = new QVBoxLayout(this);
+    // Initialize member layout
 
     // Create Menu Bar *before* adding widgets that depend on its height for layout
-    createMenu(); // This sets up menuBar and adds it via mainLayout->setMenuBar()
+    createMenu();
+    // This sets up menuBar and adds it via mainLayout->setMenuBar()
 
     // Main content area: Just the image label for now
     mainLayout->addWidget(imageLabel);
-
     // LUT and Zoom Input at the bottom
-    mainLayout->addWidget(LUT); // Add LUT
+    mainLayout->addWidget(LUT);
+    // Add LUT
 
     zoomInput = new QLineEdit(this);
     zoomInput->setStyleSheet("QLineEdit { background-color: rgba(0, 0, 0, 100); color: white; padding: 3px; border-radius: 5px; }");
-    zoomInput->setAlignment(Qt::AlignRight | Qt::AlignBottom); // Keep alignment as is
-    // zoomInput->setText(QString::number(static_cast<int>(currentScale * 100)) + "%"); // Set text in updateZoomLabel
+    zoomInput->setAlignment(Qt::AlignRight | Qt::AlignBottom);
+    // Keep alignment as is
+    // zoomInput->setText(QString::number(static_cast<int>(currentScale * 100)) + "%");
+    // Set text in updateZoomLabel
     zoomInput->setMaximumWidth(60);
     zoomInput->setFocusPolicy(Qt::FocusPolicy::ClickFocus);
     QRegularExpression regex(R"(^\d{1,3}%?$)");
@@ -91,33 +97,269 @@ ImageViewer::ImageViewer(const cv::Mat &image, const QString &title, QWidget *pa
 
     // Add zoomInput using addWidget with alignment
     mainLayout->addWidget(zoomInput, 0, Qt::AlignRight | Qt::AlignBottom);
-
     // Set the main layout for the widget
-    setLayout(mainLayout); // Explicitly set layout
+    setLayout(mainLayout);
+    // Explicitly set layout
 
     // Display initial image and set size
     if (!originalImage.empty()) {
         imageLabel->setPixmap(QPixmap::fromImage(MatToQImage(originalImage)));
     }
-    int initialWidth = originalImage.cols > 0 ? originalImage.cols + 30 : 400; // Simplified size calculation
-    int initialHeight = originalImage.rows > 0 ? originalImage.rows + (menuBar ? menuBar->height() : 0) + 80 : 300; // Adjusted height for menu and bottom widgets
+    int initialWidth = originalImage.cols > 0 ? originalImage.cols + 30 : 400;
+    // Simplified size calculation
+    int initialHeight = originalImage.rows > 0 ?
+                            originalImage.rows + (menuBar ? menuBar->height() : 0) + 80 : 300;
+    // Adjusted height for menu and bottom widgets
     setGeometry(position.x(), position.y(), initialWidth, initialHeight);
 
 
-    updateZoomLabel(); // Set initial zoom text
+    updateZoomLabel();
+    // Set initial zoom text
     updateImage(); // Initial image display, scaling, and dependent updates
 }
 
-// ==========================================================================
-// Group 11: Operation Management & Abstraction
-// ==========================================================================
+// Handle window close event
+void ImageViewer::closeEvent(QCloseEvent *event) {
+    // 1. Close associated histogram window (if open)
+    if (histogramWindow) {
+        // Closing the window will trigger its WA_DeleteOnClose attribute,
+        // which emits destroyed(), calling onHistogramClosed() to nullptr the pointer.
+        histogramWindow->close();
+        // We don't delete histogramWindow here, WA_DeleteOnClose handles it.
+        histogramWindow = nullptr;
+        // Defensive nullification
+    }
+
+    // 2. Remove this viewer from the MainWindow's list
+    if (mainWindow) {
+        mainWindow->openedImages.erase(
+            std::remove(mainWindow->openedImages.begin(), mainWindow->openedImages.end(), this),
+            mainWindow->openedImages.end()
+            );
+    }
+
+    // 3. Clean up other owned resources (like LUT if it wasn't parented)
+    if (LUT && LUT->parent() != this) { // Example check if parenting isn't guaranteed
+        delete LUT;
+        // Or LUT->deleteLater();
+        LUT = nullptr;
+    }
+    // Note: Widgets parented to 'this' (like LUT, imageLabel, zoomInput, menuBar)
+    // will be deleted automatically by Qt's parent-child mechanism when 'this' is deleted.
+    // Operations in operationsList might need explicit deletion if not parented.
+    qDeleteAll(operationsList);
+    // If operations are dynamically allocated and not parented elsewhere. Be cautious.
+    operationsList.clear();
+    // 4. Accept the event to allow the window to close
+    QWidget::closeEvent(event); // Call base class implementation
+}
+
+
+// ======================================================================
+// `Menu & Operation Management`
+// ======================================================================
+// Creates the main menu bar and registers all image operations.
+void ImageViewer::createMenu() {
+    menuBar = new QMenuBar(this);
+    // --- File Menu ---
+    QMenu *fileMenu = new QMenu("File", this);
+    QAction *undoAction = new QAction("Undo", this);
+    QAction *redoAction = new QAction("Redo", this);
+    undoAction->setShortcut(QKeySequence::Undo);
+    redoAction->setShortcut(QKeySequence::Redo);
+    connect(undoAction, &QAction::triggered, this, &ImageViewer::undo);
+    connect(redoAction, &QAction::triggered, this, &ImageViewer::redo);
+    fileMenu->addAction(undoAction);
+    fileMenu->addAction(redoAction);
+    fileMenu->addSeparator();
+    registerOperation(new ImageOperation("Duplicate", this, fileMenu,
+                                         ImageOperation::All,
+                                         [this]() { this->duplicateImage(); }, false,
+                                         QKeySequence("Ctrl+Shift+D")));
+    registerOperation(new ImageOperation("Save As...", this, fileMenu,
+                                         ImageOperation::All,
+                                         [this]() { this->saveImageAs(); }, false,
+                                         QKeySequence::Save));
+    // --- View Menu ---
+    QMenu *viewMenu = new QMenu("View", this);
+    // Replace checkable action with a standard button/action
+    showHistogramAction = new QAction("Show Histogram", this);
+    // New action name
+    showHistogramAction->setShortcut(QKeySequence("Ctrl+H")); // Optional: add shortcut
+    connect(showHistogramAction, &QAction::triggered, this, &ImageViewer::showHistogram);
+    // Connect to new slot
+    viewMenu->addAction(showHistogramAction); // Add the new action
+    viewMenu->addSeparator();
+    registerOperation(new ImageOperation("Show LUT", this, viewMenu,
+                                         ImageOperation::Grayscale, // Only for grayscale
+                                         [this]() { this->toggleLUT(); }, true));
+    // Keep LUT toggle checkable
+
+    // --- Image Type Menu ---
+    QMenu *imageProcessingMenu = new QMenu("Image Type", this);
+    registerOperation(new ImageOperation("Convert to Grayscale", this, imageProcessingMenu,
+                                         ImageOperation::Color, [this]() { this->convertToGrayscale(); }));
+    registerOperation(new ImageOperation("Make Binary", this, imageProcessingMenu,
+                                         ImageOperation::Grayscale, [this]() { this->binarise(); }));
+    registerOperation(new ImageOperation("Split Color Channels", this, imageProcessingMenu,
+                                         ImageOperation::Color, [this]() { this->splitColorChannels(); }));
+    registerOperation(new ImageOperation("Convert to HSV/Lab", this, imageProcessingMenu,
+                                         ImageOperation::Color, [this]() { this->convertToHSVLab(); }));
+    // --- Histogram Menu --- (Keep separate for consistency)
+    QMenu *histogramMenu = new QMenu("Histogram Ops", this);
+    registerOperation(new ImageOperation("Stretch Histogram", this, histogramMenu,
+                                         ImageOperation::Grayscale, [this]() { this->stretchHistogram(); }));
+    registerOperation(new ImageOperation("Equalize Histogram", this, histogramMenu,
+                                         ImageOperation::Grayscale, [this]() { this->equalizeHistogram(); }));
+    // --- Point Operations Menu ---
+    QMenu *pointOperationsMenu = new QMenu("Point", this);
+    registerOperation(new ImageOperation("Apply Negation", this, pointOperationsMenu,
+                                         ImageOperation::Grayscale,
+                                         [this]() { this->applyNegation(); }));
+    QMenu *thresholdMenu = pointOperationsMenu->addMenu("Threshold");
+    registerOperation(new ImageOperation("Global Threshold..", this, thresholdMenu,
+                                         ImageOperation::Grayscale,
+                                         [this]() { this->applyGlobalThreshold(); }));
+    registerOperation(new ImageOperation("Adaptive Threshold", this, thresholdMenu,
+                                         ImageOperation::Grayscale,
+                                         [this]() { this->applyAdaptiveThreshold(); }));
+    registerOperation(new ImageOperation("Otsu Threshold", this, thresholdMenu,
+                                         ImageOperation::Grayscale,
+                                         [this]() { this->applyOtsuThreshold(); }));
+    registerOperation(new ImageOperation("Magic wand...", this, thresholdMenu,
+                                         ImageOperation::All,
+                                         [this]() { this->applyMagicWandSegmentation(); }));
+    registerOperation(new ImageOperation("Grab cut...", this, pointOperationsMenu,
+                                         ImageOperation::All,
+                                         [this]() { this->applyGrabCutSegmentation(); }));
+    pointOperationsMenu->addSeparator();
+    registerOperation(new ImageOperation("Range Stretching...", this, pointOperationsMenu,
+                                         ImageOperation::Grayscale, [this]() { this->rangeStretching(); }));
+    registerOperation(new ImageOperation("Apply Posterization...", this, pointOperationsMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyPosterization(); }));
+    pointOperationsMenu->addSeparator();
+    registerOperation(new ImageOperation("Bitwise Operations...", this, pointOperationsMenu,
+                                         ImageOperation::Grayscale, // Bitwise usually on binary/gray
+                                         [this]() { this->applyBitwiseOperation(); }));
+    pointOperationsMenu->addSeparator();
+    registerOperation(new ImageOperation("Show Line Profile", this, pointOperationsMenu,
+                                         ImageOperation::Grayscale, // Line profile on grayscale
+                                         [this]() { this->showLineProfile(); }));
+    // --- Filters Menu ---
+    QMenu *filterMenu = new QMenu("Filters", this);
+    registerOperation(new ImageOperation("Apply Blur (3x3)", this, filterMenu,
+                                         ImageOperation::All,
+                                         [this]() { this->applyBlur(); }));
+    registerOperation(new ImageOperation("Apply Gaussian Blur (3x3)", this, filterMenu,
+                                         ImageOperation::All,
+                                         [this]() { this->applyGaussianBlur(); }));
+    filterMenu->addSeparator();
+    registerOperation(new ImageOperation("Sobel Edge Detection", this, filterMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applySobelEdgeDetection(); }));
+    registerOperation(new ImageOperation("Laplacian Edge Detection", this, filterMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyLaplacianEdgeDetection(); }));
+    registerOperation(new ImageOperation("Canny Edge Detection", this, filterMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyCannyEdgeDetection(); }));
+    registerOperation(new ImageOperation("Prewitt Edge Detection...", this, filterMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyPrewittEdgeDetection(); }));
+    filterMenu->addSeparator();
+    QMenu *sharpenMenu = filterMenu->addMenu("Sharpening");
+    registerOperation(new ImageOperation("Basic Sharpening", this, sharpenMenu,
+                                         ImageOperation::All,
+                                         [this]() { this->applySharpening(1); }));
+    registerOperation(new ImageOperation("Strong Sharpening", this, sharpenMenu,
+                                         ImageOperation::All,
+                                         [this]() { this->applySharpening(2); }));
+    registerOperation(new ImageOperation("Edge Enhancement", this, sharpenMenu,
+                                         ImageOperation::All,
+                                         [this]() { this->applySharpening(3); }));
+    filterMenu->addSeparator();
+    registerOperation(new ImageOperation("Apply Median Filter...", this, filterMenu,
+                                         ImageOperation::Grayscale, // Median typically on grayscale
+                                         [this]() { this->applyMedianFilter(); }));
+    filterMenu->addSeparator();
+    registerOperation(new ImageOperation("Apply Custom Filter...", this, filterMenu,
+                                         ImageOperation::Grayscale, // Custom usually on grayscale
+                                         [this]() { this->applyCustomFilter(); }));
+    registerOperation(new ImageOperation("Two-Step Filter (5x5)...", this, filterMenu,
+                                         ImageOperation::Grayscale, // Two-step usually on grayscale
+                                         [this]() { this->applyTwoStepFilter(); }));
+    filterMenu->addSeparator();
+    registerOperation(new ImageOperation("Detect Lines (Hough)...", this, filterMenu,
+                                         ImageOperation::All, // Hough requires binary
+                                         [this]() { this->applyHoughLineDetection(); }));
+    // --- Morphology Menu ---
+    QMenu *morphologyMenu = new QMenu("Morphology", this);
+    auto createElementSelector = [this](QMenu *parentMenu, StructuringElementType &targetVar, const QString& title) {
+        QMenu *elementMenu = new QMenu(title, parentMenu);
+        QWidget *widget = new QWidget(elementMenu);
+        QVBoxLayout *layout = new QVBoxLayout(widget);
+        layout->setContentsMargins(5, 5, 5, 5);
+        layout->setSpacing(5);
+        QRadioButton *diamondRadio = new QRadioButton("Diamond (4-conn)", widget);
+        QRadioButton *squareRadio = new QRadioButton("Square (8-conn)", widget);
+        if (targetVar == Diamond) diamondRadio->setChecked(true);
+        else squareRadio->setChecked(true);
+        layout->addWidget(diamondRadio);
+        layout->addWidget(squareRadio);
+        // Use lambda capture to ensure the correct targetVar is modified
+        connect(diamondRadio, &QRadioButton::toggled, this, [&targetVar, this](bool checked) {
+            if (checked) targetVar = Diamond;
+        });
+        connect(squareRadio, &QRadioButton::toggled, this, [&targetVar, this](bool checked) {
+            if (checked) targetVar = Square;
+        });
+        QWidgetAction *widgetAction = new QWidgetAction(elementMenu);
+        widgetAction->setDefaultWidget(widget);
+        elementMenu->addAction(widgetAction);
+        return elementMenu;
+    };
+    QMenu *erosionMenu = morphologyMenu->addMenu("Erosion");
+    erosionMenu->addMenu(createElementSelector(erosionMenu, erosionElement, "Structuring Element"));
+    registerOperation(new ImageOperation("Apply Erosion", this, erosionMenu,
+                                         ImageOperation::Binary,
+                                         [this]() { this->applyErosion(this->erosionElement); }));
+    // Explicitly capture this if necessary, or ensure member access works
+    QMenu *dilationMenu = morphologyMenu->addMenu("Dilation");
+    dilationMenu->addMenu(createElementSelector(dilationMenu, dilationElement, "Structuring Element"));
+    registerOperation(new ImageOperation("Apply Dilation", this, dilationMenu,
+                                         ImageOperation::Binary,
+                                         [this]() { this->applyDilation(this->dilationElement); }));
+    QMenu *openingMenu = morphologyMenu->addMenu("Opening");
+    openingMenu->addMenu(createElementSelector(openingMenu, openingElement, "Structuring Element"));
+    registerOperation(new ImageOperation("Apply Opening", this, openingMenu,
+                                         ImageOperation::Binary,
+                                         [this]() { this->applyOpening(this->openingElement); }));
+    QMenu *closingMenu = morphologyMenu->addMenu("Closing");
+    closingMenu->addMenu(createElementSelector(closingMenu, closingElement, "Structuring Element"));
+    registerOperation(new ImageOperation("Apply Closing", this, closingMenu,
+                                         ImageOperation::Binary,
+                                         [this]() { this->applyClosing(this->closingElement); }));
+    morphologyMenu->addSeparator();
+    registerOperation(new ImageOperation("Skeletonize", this, morphologyMenu,
+                                         ImageOperation::Binary,
+                                         [this]() { this->applySkeletonization(); }));
+    // --- Add Menus to Bar ---
+    menuBar->addMenu(fileMenu);
+    menuBar->addMenu(viewMenu);
+    menuBar->addMenu(imageProcessingMenu);
+    menuBar->addMenu(pointOperationsMenu);
+    menuBar->addMenu(histogramMenu);
+    menuBar->addMenu(filterMenu);
+    menuBar->addMenu(morphologyMenu);
+    // Set the menu bar for the main layout (already done if passed to QVBoxLayout)
+    mainLayout->setMenuBar(menuBar);
+
+    updateOperationsEnabledState();
+    // Initial state update
+}
+
+// Registers an operation for automatic state updates (enabled/disabled).
 void ImageViewer::registerOperation(ImageOperation *op) {
     operationsList.append(op);
 }
 
-// ==========================================================================
-// Group 11: Operation Management & Abstraction
-// ==========================================================================
+// Updates the enabled/disabled state of all registered operations based on the current image type.
 void ImageViewer::updateOperationsEnabledState() {
     using ImageType = ImageOperation::ImageType;
     ImageType type = ImageType::None;
@@ -158,522 +400,16 @@ void ImageViewer::updateOperationsEnabledState() {
         }
     }
     if(lutAction) {
-        lutAction->setEnabled(type == ImageType::Grayscale); // LUT only for grayscale
+        lutAction->setEnabled(type == ImageType::Grayscale);
+        // LUT only for grayscale
     }
 }
 
-// ==========================================================================
-// Group 2: Image Viewer Core & Management
-// ==========================================================================
-void ImageViewer::createMenu() {
-    menuBar = new QMenuBar(this);
 
-    // --- File Menu ---
-    QMenu *fileMenu = new QMenu("File", this);
-    QAction *undoAction = new QAction("Undo", this);
-    QAction *redoAction = new QAction("Redo", this);
-    undoAction->setShortcut(QKeySequence::Undo);
-    redoAction->setShortcut(QKeySequence::Redo);
-    connect(undoAction, &QAction::triggered, this, &ImageViewer::undo);
-    connect(redoAction, &QAction::triggered, this, &ImageViewer::redo);
-    fileMenu->addAction(undoAction);
-    fileMenu->addAction(redoAction);
-    fileMenu->addSeparator();
-    registerOperation(new ImageOperation("Duplicate", this, fileMenu,
-                                         ImageOperation::All,
-                                         [this]() { this->duplicateImage(); }, false,
-                                         QKeySequence("Ctrl+Shift+D")));
-    registerOperation(new ImageOperation("Save As...", this, fileMenu,
-                                         ImageOperation::All,
-                                         [this]() { this->saveImageAs(); }, false,
-                                         QKeySequence::Save));
-
-    // --- View Menu ---
-    QMenu *viewMenu = new QMenu("View", this);
-    // Replace checkable action with a standard button/action
-    showHistogramAction = new QAction("Show Histogram", this); // New action name
-    showHistogramAction->setShortcut(QKeySequence("Ctrl+H")); // Optional: add shortcut
-    connect(showHistogramAction, &QAction::triggered, this, &ImageViewer::showHistogram); // Connect to new slot
-    viewMenu->addAction(showHistogramAction); // Add the new action
-    viewMenu->addSeparator();
-    registerOperation(new ImageOperation("Show LUT", this, viewMenu,
-                                         ImageOperation::Grayscale, // Only for grayscale
-                                         [this]() { this->toggleLUT(); }, true)); // Keep LUT toggle checkable
-
-    // --- Image Type Menu ---
-    QMenu *imageProcessingMenu = new QMenu("Image Type", this);
-    registerOperation(new ImageOperation("Convert to Grayscale", this, imageProcessingMenu,
-                                         ImageOperation::Color, [this]() { this->convertToGrayscale(); }));
-    registerOperation(new ImageOperation("Make Binary", this, imageProcessingMenu,
-                                         ImageOperation::Grayscale, [this]() { this->binarise(); }));
-    registerOperation(new ImageOperation("Split Color Channels", this, imageProcessingMenu,
-                                         ImageOperation::Color, [this]() { this->splitColorChannels(); }));
-    registerOperation(new ImageOperation("Convert to HSV/Lab", this, imageProcessingMenu,
-                                         ImageOperation::Color, [this]() { this->convertToHSVLab(); }));
-
-    // --- Histogram Menu --- (Keep separate for consistency)
-    QMenu *histogramMenu = new QMenu("Histogram Ops", this); // Renamed slightly
-    registerOperation(new ImageOperation("Stretch Histogram", this, histogramMenu,
-                                         ImageOperation::Grayscale, [this]() { this->stretchHistogram(); }));
-    registerOperation(new ImageOperation("Equalize Histogram", this, histogramMenu,
-                                         ImageOperation::Grayscale, [this]() { this->equalizeHistogram(); }));
-
-    // --- Point Operations Menu ---
-    QMenu *pointOperationsMenu = new QMenu("Point", this);
-    registerOperation(new ImageOperation("Apply Negation", this, pointOperationsMenu,
-                                         ImageOperation::Grayscale,
-                                         [this]() { this->applyNegation(); }));
-    registerOperation(new ImageOperation("Range Stretching...", this, pointOperationsMenu,
-                                         ImageOperation::Grayscale, [this]() { this->rangeStretching(); }));
-    registerOperation(new ImageOperation("Apply Posterization...", this, pointOperationsMenu,
-                                         ImageOperation::Grayscale, [this]() { this->applyPosterization(); }));
-    registerOperation(new ImageOperation("Bitwise Operations...", this, pointOperationsMenu,
-                                         ImageOperation::Grayscale, // Bitwise usually on binary/gray
-                                         [this]() { this->applyBitwiseOperation(); }));
-    registerOperation(new ImageOperation("Show Line Profile", this, pointOperationsMenu,
-                                         ImageOperation::Grayscale, // Line profile on grayscale
-                                         [this]() { this->showLineProfile(); }));
-
-    // --- Filters Menu ---
-    QMenu *filterMenu = new QMenu("Filters", this);
-    registerOperation(new ImageOperation("Apply Blur (3x3)", this, filterMenu,
-                                         ImageOperation::Grayscale | ImageOperation::Color,
-                                         [this]() { this->applyBlur(); }));
-    registerOperation(new ImageOperation("Apply Gaussian Blur (3x3)", this, filterMenu,
-                                         ImageOperation::Grayscale | ImageOperation::Color,
-                                         [this]() { this->applyGaussianBlur(); }));
-    filterMenu->addSeparator();
-    registerOperation(new ImageOperation("Sobel Edge Detection", this, filterMenu,
-                                         ImageOperation::Grayscale, [this]() { this->applySobelEdgeDetection(); }));
-    registerOperation(new ImageOperation("Laplacian Edge Detection", this, filterMenu,
-                                         ImageOperation::Grayscale, [this]() { this->applyLaplacianEdgeDetection(); }));
-    registerOperation(new ImageOperation("Canny Edge Detection", this, filterMenu,
-                                         ImageOperation::Grayscale, [this]() { this->applyCannyEdgeDetection(); }));
-    registerOperation(new ImageOperation("Prewitt Edge Detection...", this, filterMenu,
-                                         ImageOperation::Grayscale, [this]() { this->applyPrewittEdgeDetection(); }));
-    filterMenu->addSeparator();
-    QMenu *sharpenMenu = filterMenu->addMenu("Sharpening");
-    registerOperation(new ImageOperation("Basic Sharpening", this, sharpenMenu,
-                                         ImageOperation::Grayscale | ImageOperation::Color,
-                                         [this]() { this->applySharpening(1); }));
-    registerOperation(new ImageOperation("Strong Sharpening", this, sharpenMenu,
-                                         ImageOperation::Grayscale | ImageOperation::Color,
-                                         [this]() { this->applySharpening(2); }));
-    registerOperation(new ImageOperation("Edge Enhancement", this, sharpenMenu,
-                                         ImageOperation::Grayscale | ImageOperation::Color,
-                                         [this]() { this->applySharpening(3); }));
-    filterMenu->addSeparator();
-    registerOperation(new ImageOperation("Apply Median Filter...", this, filterMenu,
-                                         ImageOperation::Grayscale, // Median typically on grayscale
-                                         [this]() { this->applyMedianFilter(); }));
-    filterMenu->addSeparator();
-    registerOperation(new ImageOperation("Apply Custom Filter...", this, filterMenu,
-                                         ImageOperation::Grayscale, // Custom usually on grayscale
-                                         [this]() { this->applyCustomFilter(); }));
-    registerOperation(new ImageOperation("Two-Step Filter (5x5)...", this, filterMenu,
-                                         ImageOperation::Grayscale, // Two-step usually on grayscale
-                                         [this]() { this->applyTwoStepFilter(); }));
-    filterMenu->addSeparator();
-    registerOperation(new ImageOperation("Detect Lines (Hough)...", this, filterMenu,
-                                         ImageOperation::All, // Hough requires binary
-                                         [this]() { this->applyHoughLineDetection(); }));
-
-    // --- Morphology Menu ---
-    QMenu *morphologyMenu = new QMenu("Morphology", this);
-    auto createElementSelector = [this](QMenu *parentMenu, StructuringElementType &targetVar, const QString& title) {
-        QMenu *elementMenu = new QMenu(title, parentMenu);
-        QWidget *widget = new QWidget(elementMenu);
-        QVBoxLayout *layout = new QVBoxLayout(widget);
-        layout->setContentsMargins(5, 5, 5, 5);
-        layout->setSpacing(5);
-        QRadioButton *diamondRadio = new QRadioButton("Diamond (4-conn)", widget);
-        QRadioButton *squareRadio = new QRadioButton("Square (8-conn)", widget);
-        if (targetVar == Diamond) diamondRadio->setChecked(true); else squareRadio->setChecked(true);
-        layout->addWidget(diamondRadio);
-        layout->addWidget(squareRadio);
-        // Use lambda capture to ensure the correct targetVar is modified
-        connect(diamondRadio, &QRadioButton::toggled, this, [&targetVar, this](bool checked) {
-            if (checked) targetVar = Diamond;
-        });
-        connect(squareRadio, &QRadioButton::toggled, this, [&targetVar, this](bool checked) {
-            if (checked) targetVar = Square;
-        });
-        QWidgetAction *widgetAction = new QWidgetAction(elementMenu);
-        widgetAction->setDefaultWidget(widget);
-        elementMenu->addAction(widgetAction);
-        return elementMenu;
-    };
-    QMenu *erosionMenu = morphologyMenu->addMenu("Erosion");
-    erosionMenu->addMenu(createElementSelector(erosionMenu, erosionElement, "Structuring Element"));
-    registerOperation(new ImageOperation("Apply Erosion", this, erosionMenu,
-                                         ImageOperation::Binary,
-                                         [this]() { this->applyErosion(this->erosionElement); })); // Explicitly capture this if necessary, or ensure member access works
-    QMenu *dilationMenu = morphologyMenu->addMenu("Dilation");
-    dilationMenu->addMenu(createElementSelector(dilationMenu, dilationElement, "Structuring Element"));
-    registerOperation(new ImageOperation("Apply Dilation", this, dilationMenu,
-                                         ImageOperation::Binary,
-                                         [this]() { this->applyDilation(this->dilationElement); }));
-    QMenu *openingMenu = morphologyMenu->addMenu("Opening");
-    openingMenu->addMenu(createElementSelector(openingMenu, openingElement, "Structuring Element"));
-    registerOperation(new ImageOperation("Apply Opening", this, openingMenu,
-                                         ImageOperation::Binary,
-                                         [this]() { this->applyOpening(this->openingElement); }));
-    QMenu *closingMenu = morphologyMenu->addMenu("Closing");
-    closingMenu->addMenu(createElementSelector(closingMenu, closingElement, "Structuring Element"));
-    registerOperation(new ImageOperation("Apply Closing", this, closingMenu,
-                                         ImageOperation::Binary,
-                                         [this]() { this->applyClosing(this->closingElement); }));
-    morphologyMenu->addSeparator();
-    registerOperation(new ImageOperation("Skeletonize", this, morphologyMenu,
-                                         ImageOperation::Binary,
-                                         [this]() { this->applySkeletonization(); }));
-
-    // --- Add Menus to Bar ---
-    menuBar->addMenu(fileMenu);
-    menuBar->addMenu(viewMenu);
-    menuBar->addMenu(imageProcessingMenu);
-    menuBar->addMenu(pointOperationsMenu);
-    menuBar->addMenu(histogramMenu);
-    menuBar->addMenu(filterMenu);
-    menuBar->addMenu(morphologyMenu);
-
-    // Set the menu bar for the main layout (already done if passed to QVBoxLayout)
-    mainLayout->setMenuBar(menuBar);
-
-    updateOperationsEnabledState(); // Initial state update
-}
-
-// ==========================================================================
-// Group 2: Image Viewer Core & Management
-// ==========================================================================
-void ImageViewer::duplicateImage() {
-    if (originalImage.empty() || !mainWindow) return;
-
-    static int duplicateCount = 1;
-    QString newTitle = QString("%1 - Copy %2").arg(this->windowTitle()).arg(duplicateCount++); // Use this->windowTitle()
-    QPoint newPos = this->pos() + QPoint(150, 150);
-
-    ImageViewer *newViewer = new ImageViewer(originalImage.clone(),
-                                             newTitle, nullptr, // Parent is null for new top-level window
-                                             newPos, mainWindow);
-    newViewer->setZoom(currentScale); // Apply current zoom to duplicate
-    newViewer->show();
-}
-
-// ==========================================================================
-// Group 12: UI Interaction Helpers
-// ==========================================================================
-std::vector<cv::Point> ImageViewer::getUserSelectedPoints(int count) {
-    selectedPoints.clear();
-    pointsToSelect = count;
-
-    // Optional: Give visual feedback that point selection is active
-    // e.g., change cursor, show status message
-
-    QEventLoop loop;
-    pointSelectionCallback = [&]() {
-        // Visual feedback for selected point (e.g., draw a temporary marker)
-        // ...
-
-        if (selectedPoints.size() >= pointsToSelect) {
-            loop.quit();  // Exit loop when enough points are picked
-        }
-    };
-
-    loop.exec();  // Wait until selection is finished
-
-    pointSelectionCallback = nullptr; // Clear callback
-    pointsToSelect = 0;
-    // Optional: Clear visual feedback
-
-    return selectedPoints;
-}
-
-
-// ==========================================================================
-// Group 12: UI Interaction Helpers
-// ==========================================================================
-void ImageViewer::onImageClicked(QMouseEvent* event) {
-    if (pointsToSelect <= 0 || originalImage.empty()) // Added check for empty image
-        return;
-
-    // Translate click position to image coordinates (handle scaling AND label position)
-    QPoint clickPos = event->pos(); // Position relative to imageLabel
-
-    // Get the displayed pixmap size
-    QSize pixmapSize = imageLabel->pixmap(Qt::ReturnByValue).size(); // Use Qt::ReturnByValue for safety
-    if (pixmapSize.isEmpty() || pixmapSize.width() <= 0 || pixmapSize.height() <= 0) return;
-
-
-    // Calculate scale based on original image vs displayed pixmap size
-    double xScale = static_cast<double>(originalImage.cols) / pixmapSize.width();
-    double yScale = static_cast<double>(originalImage.rows) / pixmapSize.height();
-
-    // Calculate image coordinates, clamping to bounds
-    int imgX = static_cast<int>(std::round(clickPos.x() * xScale));
-    int imgY = static_cast<int>(std::round(clickPos.y() * yScale));
-
-    imgX = std::max(0, std::min(originalImage.cols - 1, imgX));
-    imgY = std::max(0, std::min(originalImage.rows - 1, imgY));
-
-
-    selectedPoints.push_back(cv::Point(imgX, imgY));
-
-    if (pointSelectionCallback)
-        pointSelectionCallback();  // Notify the event loop or update UI
-}
-
-
-// ==========================================================================
-// Group 2: Image Viewer Core & Management
-// ==========================================================================
-// REVERTED saveImageAs function kept as is
-// ==========================================================================
-void ImageViewer::saveImageAs() {
-    QString filePath = QFileDialog::getSaveFileName(this, "Save Image As", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif *.tiff)");
-    if (!filePath.isEmpty()) {
-        std::vector<int> compression_params;
-        if (filePath.endsWith(".jpg", Qt::CaseInsensitive) || filePath.endsWith(".jpeg", Qt::CaseInsensitive)) {
-            compression_params.push_back(cv::IMWRITE_JPEG_QUALITY);
-            compression_params.push_back(95);  // JPEG quality (0-100)
-        } else if (filePath.endsWith(".png", Qt::CaseInsensitive)) {
-            compression_params.push_back(cv::IMWRITE_PNG_COMPRESSION);
-            compression_params.push_back(3); // PNG compression level (0-9)
-        }
-#ifdef _WIN32
-        std::string path = filePath.toLocal8Bit().constData(); // Safer conversion for Windows paths
-#else
-        std::string path = filePath.toUtf8().constData();
-#endif
-        try {
-            if (!cv::imwrite(path, originalImage, compression_params)) {
-                QMessageBox::warning(this, "Save Error", "Failed to save the image. Check file path and permissions.");
-            }
-        } catch (const cv::Exception& ex) {
-            QMessageBox::critical(this, "OpenCV Save Error", QString("Error saving image: %1").arg(ex.what()));
-        }
-    }
-}
-
-// ==========================================================================
-// Group 4: UI Widgets & Visualization
-// ==========================================================================
-// Renamed from toggleHistogram to showHistogram
-// Logic changed to create/show a separate window
-// ==========================================================================
-void ImageViewer::showHistogram() {
-    if (!histogramWindow) { // If no window exists or it was destroyed
-        histogramWindow = new HistogramWidget(); // Create as a top-level window
-
-        // Connect the destroyed signal to our slot to know when it's closed
-        connect(histogramWindow, &HistogramWidget::destroyed, this, &ImageViewer::onHistogramClosed);
-
-        // Set a unique window title based on the image viewer
-        histogramWindow->setWindowTitle(this->windowTitle() + " - Histogram");
-
-        // Position the histogram window relative to the image viewer
-        histogramWindow->move(this->pos() + QPoint(this->width() + 10, 0));
-
-        updateHistogram(); // Compute initial data before showing
-        histogramWindow->show();
-    } else {
-        // Window already exists, just bring it to the front
-        histogramWindow->raise();
-        histogramWindow->activateWindow();
-    }
-    // No need to update button state here, it's handled by updateOperationsEnabledState
-}
-
-// ==========================================================================
-// Group 4: UI Widgets & Visualization
-// ==========================================================================
-// New slot to handle the histogram window being closed/destroyed
-// ==========================================================================
-void ImageViewer::onHistogramClosed() {
-    // The signal is emitted when the object is about to be destroyed,
-    // or already is. Just nullify the pointer.
-    histogramWindow = nullptr;
-    // Update the button state (if needed, though current logic doesn't disable when open)
-    // updateOperationsEnabledState(); // Uncomment if button state depends on window existence
-}
-
-
-// ==========================================================================
-// Group 4: UI Widgets & Visualization
-// ==========================================================================
-// Keep toggleLUT as is, it controls the embedded QTableWidget
-void ImageViewer::toggleLUT() {
-    QAction* lutAction = nullptr;
-    for(ImageOperation* op : operationsList) {
-        if(op && op->getAction() && op->getAction()->text() == "Show LUT") {
-            lutAction = op->getAction();
-            break;
-        }
-    }
-
-    if (!LUT) return; // Safety check
-
-    if (LUT->isVisible()) {
-        LUT->hide();
-        if(lutAction) lutAction->setChecked(false);
-    } else {
-        updateHistogramTable(); // Update data *before* showing
-        LUT->show();
-        if(lutAction) lutAction->setChecked(true);
-    }
-    // Adjusting size might still be needed if LUT significantly changes window height needs
-    adjustSize();
-}
-
-// ==========================================================================
-// Group 5: Image Processing - Core Operations (Wrappers) - NO CHANGES HERE
-// ==========================================================================
-void ImageViewer::binarise() {
-    pushToUndoStack();
-    originalImage = ImageProcessing::binarise(originalImage);
-    updateImage();
-}
-
-void ImageViewer::convertToGrayscale() {
-    pushToUndoStack();
-    originalImage = ImageProcessing::convertToGrayscale(originalImage);
-    updateImage();
-}
-
-void ImageViewer::splitColorChannels() {
-    if (!mainWindow || originalImage.channels() < 3) { // Added channel check
-        QMessageBox::warning(this, "Split Error", "Cannot split channels. Image must be 3 or 4 channel color.");
-        return;
-    }
-    std::vector<cv::Mat> channels = ImageProcessing::splitColorChannels(originalImage);
-    if (channels.size() >= 3) { // Allow for 4 channels (ignore alpha maybe?)
-        (new ImageViewer(channels[0], windowTitle() + " - Blue", nullptr, pos() + QPoint(30, 30), mainWindow))->show();
-        (new ImageViewer(channels[1], windowTitle() + " - Green", nullptr, pos() + QPoint(60, 60), mainWindow))->show();
-        (new ImageViewer(channels[2], windowTitle() + " - Red", nullptr, pos() + QPoint(90, 90), mainWindow))->show();
-    } else {
-        QMessageBox::warning(this, "Split Error", "Failed to split channels.");
-    }
-}
-
-void ImageViewer::convertToHSVLab() {
-    if (!mainWindow || originalImage.channels() < 3) { // Added channel check
-        QMessageBox::warning(this, "Conversion Error", "Cannot convert. Image must be 3 or 4 channel color.");
-        return;
-    }
-    cv::Mat hsv = ImageProcessing::convertToHSV(originalImage);
-    cv::Mat lab = ImageProcessing::convertToLab(originalImage);
-
-    if (!hsv.empty()) {
-        (new ImageViewer(hsv, windowTitle() + " - HSV", nullptr, pos() + QPoint(30, 30), mainWindow))->show();
-    } else {
-        QMessageBox::warning(this, "Conversion Error", "Could not convert to HSV.");
-    }
-    if (!lab.empty()) {
-        (new ImageViewer(lab, windowTitle() + " - Lab", nullptr, pos() + QPoint(60, 60), mainWindow))->show();
-    } else {
-        QMessageBox::warning(this, "Conversion Error", "Could not convert to Lab.");
-    }
-}
-
-// ==========================================================================
-// Group 7: Image Processing - Histogram Operations (Wrappers) - NO CHANGES HERE
-// ==========================================================================
-void ImageViewer::stretchHistogram() {
-    pushToUndoStack();
-    originalImage = ImageProcessing::stretchHistogram(originalImage);
-    updateImage();
-}
-
-void ImageViewer::equalizeHistogram() {
-    pushToUndoStack();
-    originalImage = ImageProcessing::equalizeHistogram(originalImage);
-    updateImage();
-}
-
-// ==========================================================================
-// Group 6: Image Processing - Point Operations (Wrappers) - NO CHANGES HERE
-// ==========================================================================
-void ImageViewer::applyNegation() {
-    pushToUndoStack();
-    originalImage = ImageProcessing::applyNegation(originalImage);
-    updateImage();
-}
-
-void ImageViewer::rangeStretching() {
-    RangeStretchingDialog dialog(this);
-    setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
-        return ImageProcessing::applyRangeStretching(originalImage, dialog.getP1(),
-                                                     dialog.getP2(), dialog.getQ3(), dialog.getQ4());
-    });
-    dialog.exec();
-}
-
-void ImageViewer::applyPosterization() {
-    bool ok;
-    int levels = QInputDialog::getInt(this, "Posterization", "Enter number of levels (2-256):", 4, 2, 256, 1, &ok);
-    if (ok) {
-        pushToUndoStack();
-        originalImage = ImageProcessing::applyPosterization(originalImage, levels);
-        updateImage();
-    }
-}
-
-void ImageViewer::applyBitwiseOperation() {
-    if (originalImage.empty() || !mainWindow) return;
-    BitwiseOperationDialog dialog(this, mainWindow->openedImages);
-    setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
-        return dialog.getResult();
-    });
-    dialog.exec();
-
-}
-
-// ==========================================================================
-// Group 2: Image Viewer Core & Management - UNDO/REDO
-// ==========================================================================
-void ImageViewer::pushToUndoStack() {
-    if (!originalImage.empty()) {
-        // Consider using QStack for potentially better Qt integration, though std::stack is fine
-        const int MAX_UNDO_LEVELS = 20; // Keep limit reasonable
-        // If using std::stack, we need to manage the size manually if a limit is desired
-        if (undoStack.size() >= MAX_UNDO_LEVELS) {
-            // To implement a limit with stack, we'd need to pop from the "bottom",
-            // which stack doesn't support. Easiest is to use std::deque or QQueue/QStack
-            // Or just let it grow, assuming memory isn't a huge concern for typical use.
-            qWarning() << "Undo stack limit potentially exceeded. Oldest states not automatically removed.";
-        }
-        undoStack.push(originalImage.clone());
-        clearRedoStack(); // Clear redo whenever a new action is performed
-    }
-}
-
-void ImageViewer::undo() {
-    if (!undoStack.empty()) {
-        redoStack.push(originalImage.clone()); // Push current state to redo
-        originalImage = undoStack.top();
-        undoStack.pop();
-        updateImage();
-    }
-}
-
-void ImageViewer::redo() {
-    if (!redoStack.empty()) {
-        undoStack.push(originalImage.clone()); // Push current state to undo
-        originalImage = redoStack.top();
-        redoStack.pop();
-        updateImage();
-    }
-}
-
-void ImageViewer::clearRedoStack() {
-    // Use QStack's clear() or std::stack's loop pop
-    while (!redoStack.empty()) redoStack.pop();
-    // redoStack.clear(); // If using QStack
-}
-
-// ==========================================================================
-// Group 2: Image Viewer Core & Management - UPDATE IMAGE
-// ==========================================================================
+// ======================================================================
+// `Internal UI Update Helpers`
+// ======================================================================
+// Updates the displayed pixmap based on the original image and current scale. Also updates dependent UI elements.
 void ImageViewer::updateImage() {
     if (originalImage.empty()) {
         imageLabel->clear();
@@ -720,7 +456,8 @@ void ImageViewer::updateImage() {
 
     QPixmap pixmap;
     if (usePyramidScaling) {
-        pixmap = QPixmap::fromImage(qimg); // Already scaled, no additional scaling
+        pixmap = QPixmap::fromImage(qimg);
+        // Already scaled, no additional scaling
     } else {
         int newWidth = std::max(1, static_cast<int>(std::round(qimg.width() * currentScale)));
         int newHeight = std::max(1, static_cast<int>(std::round(qimg.height() * currentScale)));
@@ -729,7 +466,6 @@ void ImageViewer::updateImage() {
 
     imageLabel->setPixmap(pixmap);
     imageLabel->setFixedSize(pixmap.size());
-
     if (!isMaximized() && !isFullScreen()) {
         adjustSize();
     }
@@ -741,94 +477,34 @@ void ImageViewer::updateImage() {
 
     updateZoomLabel();
     updateOperationsEnabledState();
+    if(selectingPoints) drawTemporaryPoints();
 }
 
-
-
-// ==========================================================================
-// Group 4: UI Widgets & Visualization - ZOOM CONTROLS
-// ==========================================================================
+// Updates the text in the zoom percentage input field.
 void ImageViewer::updateZoomLabel() {
-    if (!zoomInput) return; // Safety check
+    if (!zoomInput) return;
+    // Safety check
     int zoomPercentage = static_cast<int>(std::round(currentScale * 100.0));
     zoomInput->setText(QString::number(zoomPercentage) + "%");
-    // zoomInput->adjustSize(); // Let layout handle size, just set max width
+    // zoomInput->adjustSize();
+    // Let layout handle size, just set max width
 }
 
-void ImageViewer::setZoomFromInput() {
-    if (!zoomInput) return; // Safety check
-    QString text = zoomInput->text();
-    text.remove('%'); // Remove percentage sign if present
-    bool ok;
-    int zoomValue = text.toInt(&ok);
-
-    zoomInput->clearFocus(); // Remove focus after pressing Enter
-
-    if (ok && zoomValue >= 10 && zoomValue <= 500) { // Zoom range 10% to 500%
-        double newScale = zoomValue / 100.0;
-        if (std::abs(newScale - currentScale) > 1e-6) { // Only update if scale actually changes
-            currentScale = newScale;
-            updateImage();
-        } else {
-            updateZoomLabel(); // Restore text if value was same but format different (e.g., added %)
-        }
-    } else {
-        QMessageBox::warning(this, "Invalid Input", "Please enter a zoom value between 10% and 500%.");
-        updateZoomLabel(); // Reset text to current valid zoom
-    }
-}
-
-// ==========================================================================
-// Group 4: UI Widgets & Visualization - WHEEL EVENT FOR ZOOM
-// ==========================================================================
-void ImageViewer::wheelEvent(QWheelEvent *event) {
-    double oldScale = currentScale;
-
-    if (usePyramidScaling) {
-        // Only allow switching between 0.25, 0.5, 1.0, 2.0, 4.0
-        static const std::vector<double> pyramidScales = {0.25, 0.5, 1.0, 2.0, 4.0};
-        auto it = std::find(pyramidScales.begin(), pyramidScales.end(), currentScale);
-        if (it != pyramidScales.end()) {
-            if (event->angleDelta().y() > 0 && it + 1 != pyramidScales.end()) {
-                currentScale = *(it + 1); // Zoom in
-            } else if (event->angleDelta().y() < 0 && it != pyramidScales.begin()) {
-                currentScale = *(it - 1); // Zoom out
-            }
-        }
-    } else {
-        const double scaleFactor = 1.15;
-        if (event->angleDelta().y() > 0) {
-            currentScale *= scaleFactor;
-        } else {
-            currentScale /= scaleFactor;
-        }
-        currentScale = qBound(0.1, currentScale, 5.0);
-    }
-
-    if (std::abs(currentScale - oldScale) > 1e-6) {
-        updateImage();
-    }
-
-    event->accept();
-}
-
-
-// ==========================================================================
-// Group 7: Image Processing - Histogram Operations
-// ==========================================================================
-// Update histogram SYNCHRONOUSLY - called by updateImage()
+// Updates the histogram data in the separate HistogramWidget window, if it exists.
 void ImageViewer::updateHistogram() {
     // Check if the histogram window pointer is valid (i.e., window exists)
     if (histogramWindow) {
         // Ensure image is grayscale before computing histogram
         cv::Mat grayImage;
         if (originalImage.channels() == 1) {
-            grayImage = originalImage; // Already grayscale/binary
+            grayImage = originalImage;
+            // Already grayscale/binary
         } else if (originalImage.channels() >= 3) {
             grayImage = ImageProcessing::convertToGrayscale(originalImage);
         } else {
             // Handle unexpected channel count - clear histogram
-            histogramWindow->computeHistogram(cv::Mat()); // Pass empty Mat
+            histogramWindow->computeHistogram(cv::Mat());
+            // Pass empty Mat
             return;
         }
 
@@ -836,17 +512,19 @@ void ImageViewer::updateHistogram() {
             histogramWindow->computeHistogram(grayImage);
         } else {
             // Handle case where grayscale conversion failed
-            histogramWindow->computeHistogram(cv::Mat()); // Pass empty Mat
+            histogramWindow->computeHistogram(cv::Mat());
+            // Pass empty Mat
         }
     }
 }
 
-// Update embedded LUT table - called by updateImage() and toggleLUT()
+// Updates the embedded QTableWidget (LUT) with histogram data for grayscale images.
 void ImageViewer::updateHistogramTable() {
     if (!LUT || !LUT->isVisible() || originalImage.empty() || originalImage.channels() != 1) {
         // Clear table if not visible, no image, or not grayscale
         if (LUT) {
-            LUT->clearContents(); // Clear data but keep headers
+            LUT->clearContents();
+            // Clear data but keep headers
             // Optionally set all counts to 0
             for (int i = 0; i < 256; ++i) {
                 QTableWidgetItem *item = LUT->item(0, i);
@@ -872,9 +550,11 @@ void ImageViewer::updateHistogramTable() {
     }
 
     // Update QTableWidget
-    LUT->setColumnCount(256); // Ensure correct column count
+    LUT->setColumnCount(256);
+    // Ensure correct column count
     for (int i = 0; i < 256; ++i) {
-        QTableWidgetItem *item = LUT->item(0, i); // Try to reuse existing item
+        QTableWidgetItem *item = LUT->item(0, i);
+        // Try to reuse existing item
         if (!item) {
             item = new QTableWidgetItem(QString::number(histogramDataVec[i]));
             LUT->setItem(0, i, item);
@@ -884,180 +564,13 @@ void ImageViewer::updateHistogramTable() {
     }
 }
 
-// ==========================================================================
-// Group 8: Image Processing - Filtering & Edge Detection (Wrappers) - NO CHANGES HERE
-// ==========================================================================
-void ImageViewer::applyBlur() {
-    pushToUndoStack();
-    originalImage = ImageProcessing::applyBoxBlur(originalImage, 3, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
-    updateImage();
-}
-
-void ImageViewer::applyGaussianBlur() {
-    pushToUndoStack();
-    originalImage = ImageProcessing::applyGaussianBlur(originalImage, 3, 0, 0, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
-    updateImage();
-}
-
-void ImageViewer::applySobelEdgeDetection() {
-    pushToUndoStack();
-    originalImage = ImageProcessing::applySobelEdgeDetection(originalImage, 3, 1, 0, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
-    updateImage();
-}
-
-void ImageViewer::applyLaplacianEdgeDetection() {
-    pushToUndoStack();
-    originalImage = ImageProcessing::applyLaplacianEdgeDetection(originalImage, 1, 1, 0, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
-    updateImage();
-}
-
-void ImageViewer::applyCannyEdgeDetection() {
-    pushToUndoStack();
-    originalImage = ImageProcessing::applyCannyEdgeDetection(originalImage, 50, 150); // Default thresholds
-    updateImage();
-}
-
-void ImageViewer::applySharpening(int option) {
-    pushToUndoStack();
-    originalImage = ImageProcessing::applySharpening(originalImage, option, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
-    updateImage();
-}
-
-void ImageViewer::applyPrewittEdgeDetection() {
-    DirectionSelectionDialog dialog(this);
-    setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
-        return ImageProcessing::applyPrewittEdgeDetection(originalImage, dialog.getSelectedDirection(),
-                                                          mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
-    });
-    dialog.exec();
-}
-
-void ImageViewer::applyCustomFilter() {
-    CustomFilterDialog dialog(this);
-    setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
-        return ImageProcessing::applyCustomFilter(originalImage, dialog.getKernel(), true,
-                                                  mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
-    });
-    dialog.exec();
-}
-
-void ImageViewer::applyMedianFilter() {
-    bool ok;
-    QStringList kernelOptions = {"3", "5", "7", "9"}; // Odd sizes usually
-    QString selected = QInputDialog::getItem(this, "Select Median Kernel Size", "Kernel Size:", kernelOptions, 0, false, &ok);
-    if (ok && !selected.isEmpty()) {
-        int kernelSize = selected.toInt();
-        pushToUndoStack();
-        originalImage = ImageProcessing::applyMedianFilter(originalImage, kernelSize, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
-        updateImage();
-    }
-}
-
-void ImageViewer::applyTwoStepFilter() {
-    TwoStepFilterDialog filterDialog(this);
-    setupPreview(&filterDialog, filterDialog.getPreviewCheckBox(), [&]() {
-        return ImageProcessing::applyTwoStepFilter(originalImage.clone(), filterDialog.getKernel1(),
-                                                   filterDialog.getKernel2(), mainWindow->getBorderOption());
-    });
-    filterDialog.exec();
-}
-
-// ==========================================================================
-// Group 10: Image Processing - Feature Detection (Wrappers) - NO CHANGES HERE
-// ==========================================================================
-void ImageViewer::applyHoughLineDetection() {
-    if (originalImage.empty()) return;
-
-    cv::Mat edgeImage;
-    // Check if image is already binary (0s and 255s only)
-    bool isBinary = false;
-    if (originalImage.type() == CV_8UC1) {
-        cv::Mat nonBinary = (originalImage != 0) & (originalImage != 255);
-        isBinary = (cv::countNonZero(nonBinary) == 0);
-    }
-
-    if (!isBinary) {
-        QMessageBox::StandardButton reply;
-        reply = QMessageBox::question(this, "Hough Lines",
-                                      "Hough transform requires a binary image.\nApply Canny edge detection (50, 150) first?",
-                                      QMessageBox::Yes|QMessageBox::No);
-        if (reply == QMessageBox::Yes) {
-            // Convert to grayscale if necessary before Canny
-            cv::Mat grayForCanny;
-            if (originalImage.channels() == 1) {
-                grayForCanny = originalImage;
-            } else {
-                grayForCanny = ImageProcessing::convertToGrayscale(originalImage);
-            }
-            edgeImage = ImageProcessing::applyCannyEdgeDetection(grayForCanny, 50, 150);
-            pushToUndoStack();
-            originalImage = edgeImage;
-            updateImage();
-        } else {
-            return; // User chose not to proceed
-        }
-    } else {
-        edgeImage = originalImage.clone(); // Use the binary image directly
-    }
-
-    if (edgeImage.empty() || edgeImage.type() != CV_8UC1) { // Double check edgeImage
-        QMessageBox::warning(this, "Hough Error", "Could not obtain a valid binary edge image for Hough transform.");
-        return;
-    }
-
-    HoughDialog dialog(this);
-
-    setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
-        return ImageProcessing::detectHoughLines(edgeImage, dialog.getRho(),
-                                                 dialog.getThetaDegrees() * CV_PI / 180.0, dialog.getThreshold());
-    });
-    dialog.exec();
-}
-
-// ==========================================================================
-// Group 9: Image Processing - Morphology (Wrappers) - NO CHANGES HERE
-// ==========================================================================
-void ImageViewer::applyErosion(StructuringElementType type) {
-    pushToUndoStack();
-    originalImage = ImageProcessing::applyErosion(originalImage, type, 1, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
-    updateImage();
-}
-
-void ImageViewer::applyDilation(StructuringElementType type) {
-    pushToUndoStack();
-    originalImage = ImageProcessing::applyDilation(originalImage, type, 1, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
-    updateImage();
-}
-
-void ImageViewer::applyOpening(StructuringElementType type) {
-    pushToUndoStack();
-    originalImage = ImageProcessing::applyOpening(originalImage, type, 1, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
-    updateImage();
-}
-
-void ImageViewer::applyClosing(StructuringElementType type) {
-    pushToUndoStack();
-    originalImage = ImageProcessing::applyClosing(originalImage, type, 1, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
-    updateImage();
-}
-
-void ImageViewer::applySkeletonization() {
-    pushToUndoStack();
-    // Assuming Diamond is default or appropriate here
-    originalImage = ImageProcessing::applySkeletonization(originalImage, Diamond);
-    updateImage();
-}
-
-// ==========================================================================
-// Group 4: UI Widgets & Visualization - TEMP IMAGE / LINE PROFILE
-// ==========================================================================
-// Temporarily display an image without adding to undo stack
+// Temporarily displays an image (scaled to current view) without adding to undo stack. Used for previews.
 void ImageViewer::showTempImage(const cv::Mat &temp) {
-    if (temp.empty() || !imageLabel) return; // Safety checks
+    if (temp.empty() || !imageLabel) return;
+    // Safety checks
 
     QImage qimg = MatToQImage(temp);
     if (qimg.isNull()) return;
-
     // Scale temp image to fit current label size
     int currentLabelWidth = imageLabel->width();
     int currentLabelHeight = imageLabel->height();
@@ -1068,24 +581,469 @@ void ImageViewer::showTempImage(const cv::Mat &temp) {
     // DO NOT call adjustSize() or updateImage() here, it's temporary
 }
 
+// Draws currently selected points and lines/rectangles on a temporary image overlay.
+void ImageViewer::drawTemporaryPoints() {
+    cv::Mat displayImage;
+    if (originalImage.channels() == 1)
+        cv::cvtColor(originalImage, displayImage, cv::COLOR_GRAY2BGR);
+    else
+        displayImage = originalImage.clone();
+
+    int lineThickness = std::max(1, static_cast<int>(std::round(std::max(displayImage.cols, displayImage.rows) / 500.0)));
+    for (const auto& pt : selectedPoints) {
+        cv::circle(displayImage, pt, lineThickness, cv::Scalar(0, 255, 0), -1);
+    }
+
+    if (selectedPoints.size() == 2) {
+        if (!rectangleMode) {
+            cv::line(displayImage, selectedPoints[0], selectedPoints[1], cv::Scalar(0, 0, 255), lineThickness);
+            // Red line
+        } else {
+            // Calculate top-left and size
+            cv::Point p1 = selectedPoints[0];
+            cv::Point p2 = selectedPoints[1];
+            cv::Point topLeft(std::min(p1.x, p2.x), std::min(p1.y, p2.y));
+            cv::Point bottomRight(std::max(p1.x, p2.x), std::max(p1.y, p2.y));
+            // Draw rectangle
+            cv::rectangle(displayImage, topLeft, bottomRight, cv::Scalar(0, 255, 0), lineThickness);
+            // Green rectangle
+        }
+    }
+
+    showTempImage(displayImage);
+}
+
+
+// ======================================================================
+// `Internal UI Slots`
+// ======================================================================
+// Handles mouse clicks on the image label, primarily for point selection modes.
+void ImageViewer::onImageClicked(QMouseEvent* event) {
+    if (magicWandMode) {
+        QPoint clickPos = event->pos();
+        QSize pixmapSize = imageLabel->pixmap(Qt::ReturnByValue).size();
+        if (pixmapSize.isEmpty()) return;
+
+        double xScale = static_cast<double>(originalImage.cols) / pixmapSize.width();
+        double yScale = static_cast<double>(originalImage.rows) / pixmapSize.height();
+        int imgX = std::clamp(static_cast<int>(std::round(clickPos.x() * xScale)), 0, originalImage.cols - 1);
+        int imgY = std::clamp(static_cast<int>(std::round(clickPos.y() * yScale)), 0, originalImage.rows - 1);
+        // Wykonaj segmentację
+        cv::Mat mask = ImageProcessing::magicWandSegmentation(originalImage, cv::Point(imgX, imgY), 15);
+        // tolerancja 15
+        showTempImage(mask * 255);
+        // maska jako obraz binarny
+
+        magicWandMode = false;
+        // Wyłącz po jednym użyciu
+    }
+
+
+    if (!selectingPoints || pointsToSelect <= 0 || originalImage.empty())
+        return;
+    QPoint clickPos = event->pos();
+    QSize pixmapSize = imageLabel->pixmap(Qt::ReturnByValue).size();
+    if (pixmapSize.isEmpty()) return;
+
+    double xScale = static_cast<double>(originalImage.cols) / pixmapSize.width();
+    double yScale = static_cast<double>(originalImage.rows) / pixmapSize.height();
+
+    int imgX = std::clamp(static_cast<int>(std::round(clickPos.x() * xScale)), 0, originalImage.cols - 1);
+    int imgY = std::clamp(static_cast<int>(std::round(clickPos.y() * yScale)), 0, originalImage.rows - 1);
+
+    selectedPoints.push_back(cv::Point(imgX, imgY));
+    if (selectedPoints.size() > pointsToSelect) {
+        selectedPoints.erase(selectedPoints.begin());
+        // Optionally disable more clicks here if you don't want extra points
+        //selectingPoints = false;
+    }
+
+    drawTemporaryPoints(); // <- VISUAL FEEDBACK
+
+}
+
+// Sets the zoom level based on the value entered in the zoom input field.
+void ImageViewer::setZoomFromInput() {
+    if (!zoomInput) return;
+    // Safety check
+    QString text = zoomInput->text();
+    text.remove('%');
+    // Remove percentage sign if present
+    bool ok;
+    int zoomValue = text.toInt(&ok);
+
+    zoomInput->clearFocus();
+    // Remove focus after pressing Enter
+
+    if (ok && zoomValue >= 10 && zoomValue <= 500) { // Zoom range 10% to 500%
+        double newScale = zoomValue / 100.0;
+        if (std::abs(newScale - currentScale) > 1e-6) { // Only update if scale actually changes
+            currentScale = newScale;
+            updateImage();
+        } else {
+            updateZoomLabel();
+            // Restore text if value was same but format different (e.g., added %)
+        }
+    } else {
+        QMessageBox::warning(this, "Invalid Input", "Please enter a zoom value between 10% and 500%.");
+        updateZoomLabel(); // Reset text to current valid zoom
+    }
+}
+
+// Creates or raises the separate histogram window.
+void ImageViewer::showHistogram() {
+    if (!histogramWindow) { // If no window exists or it was destroyed
+        histogramWindow = new HistogramWidget();
+        // Create as a top-level window
+
+        // Connect the destroyed signal to our slot to know when it's closed
+        connect(histogramWindow, &HistogramWidget::destroyed, this, &ImageViewer::onHistogramClosed);
+        // Set a unique window title based on the image viewer
+        histogramWindow->setWindowTitle(this->windowTitle() + " - Histogram");
+        // Position the histogram window relative to the image viewer
+        histogramWindow->move(this->pos() + QPoint(this->width() + 10, 0));
+        updateHistogram(); // Compute initial data before showing
+        histogramWindow->show();
+    } else {
+        // Window already exists, just bring it to the front
+        histogramWindow->raise();
+        histogramWindow->activateWindow();
+    }
+    // No need to update button state here, it's handled by updateOperationsEnabledState
+}
+
+// Slot called when the separate histogram window is closed/destroyed.
+void ImageViewer::onHistogramClosed() {
+    // The signal is emitted when the object is about to be destroyed,
+    // or already is.
+    // Just nullify the pointer.
+    histogramWindow = nullptr;
+    // Update the button state (if needed, though current logic doesn't disable when open)
+    // updateOperationsEnabledState();
+    // Uncomment if button state depends on window existence
+}
+
+// Toggles the visibility of the embedded LUT (histogram table).
+void ImageViewer::toggleLUT() {
+    QAction* lutAction = nullptr;
+    for(ImageOperation* op : operationsList) {
+        if(op && op->getAction() && op->getAction()->text() == "Show LUT") {
+            lutAction = op->getAction();
+            break;
+        }
+    }
+
+    if (!LUT) return;
+    // Safety check
+
+    if (LUT->isVisible()) {
+        LUT->hide();
+        if(lutAction) lutAction->setChecked(false);
+    } else {
+        updateHistogramTable();
+        // Update data *before* showing
+        LUT->show();
+        if(lutAction) lutAction->setChecked(true);
+    }
+    // Adjusting size might still be needed if LUT significantly changes window height needs
+    adjustSize();
+}
+
+// Enables point selection mode and sets the cursor.
+void ImageViewer::enablePointSelection() {
+    selectingPoints = true;
+    setCursor(Qt::CrossCursor);
+}
+
+// Disables point selection mode and resets the cursor.
+void ImageViewer::disablePointSelection() {
+    selectingPoints = false;
+    unsetCursor();
+}
+
+
+// ======================================================================
+// `Event Handlers`
+// ======================================================================
+// Handles mouse wheel events for zooming the image.
+void ImageViewer::wheelEvent(QWheelEvent *event) {
+    double oldScale = currentScale;
+    if (usePyramidScaling) {
+        // Only allow switching between 0.25, 0.5, 1.0, 2.0, 4.0
+        static const std::vector<double> pyramidScales = {0.25, 0.5, 1.0, 2.0, 4.0};
+        auto it = std::find(pyramidScales.begin(), pyramidScales.end(), currentScale);
+        if (it != pyramidScales.end()) {
+            if (event->angleDelta().y() > 0 && it + 1 != pyramidScales.end()) {
+                currentScale = *(it + 1);
+                // Zoom in
+            } else if (event->angleDelta().y() < 0 && it != pyramidScales.begin()) {
+                currentScale = *(it - 1);
+                // Zoom out
+            }
+        }
+    } else {
+        const double scaleFactor = 1.15;
+        if (event->angleDelta().y() > 0) {
+            currentScale *= scaleFactor;
+        } else {
+            currentScale /= scaleFactor;
+        }
+        currentScale = qBound(0.1, currentScale, 5.0);
+    }
+
+    if (std::abs(currentScale - oldScale) > 1e-6) {
+        updateImage();
+    }
+
+    event->accept();
+}
+
+
+// ======================================================================
+// `Undo/Redo Management`
+// ======================================================================
+// Pushes the current image state onto the undo stack.
+void ImageViewer::pushToUndoStack() {
+    if (!originalImage.empty()) {
+        // Consider using QStack for potentially better Qt integration, though std::stack is fine
+        const int MAX_UNDO_LEVELS = 20;
+        // Keep limit reasonable
+        // If using std::stack, we need to manage the size manually if a limit is desired
+        if (undoStack.size() >= MAX_UNDO_LEVELS) {
+            // To implement a limit with stack, we'd need to pop from the "bottom",
+            // which stack doesn't support.
+            // Easiest is to use std::deque or QQueue/QStack
+            // Or just let it grow, assuming memory isn't a huge concern for typical use.
+            qWarning() << "Undo stack limit potentially exceeded. Oldest states not automatically removed.";
+        }
+        undoStack.push(originalImage.clone());
+        clearRedoStack();
+        // Clear redo whenever a new action is performed
+    }
+}
+
+// Reverts to the previous image state from the undo stack.
+void ImageViewer::undo() {
+    if (!undoStack.empty()) {
+        redoStack.push(originalImage.clone());
+        // Push current state to redo
+        originalImage = undoStack.top();
+        undoStack.pop();
+        updateImage();
+    }
+}
+
+// Re-applies an undone image state from the redo stack.
+void ImageViewer::redo() {
+    if (!redoStack.empty()) {
+        undoStack.push(originalImage.clone());
+        // Push current state to undo
+        originalImage = redoStack.top();
+        redoStack.pop();
+        updateImage();
+    }
+}
+
+// Clears the redo stack.
+void ImageViewer::clearRedoStack() {
+    // Use QStack's clear() or std::stack's loop pop
+    while (!redoStack.empty()) redoStack.pop();
+    // redoStack.clear(); // If using QStack
+}
+
+
+// ======================================================================
+// `File & View Operations Slots`
+// ======================================================================
+// Creates a new ImageViewer instance with a copy of the current image.
+void ImageViewer::duplicateImage() {
+    if (originalImage.empty() || !mainWindow) return;
+    static int duplicateCount = 1;
+    QString newTitle = QString("%1 - Copy %2").arg(this->windowTitle()).arg(duplicateCount++);
+    // Use this->windowTitle()
+    QPoint newPos = this->pos() + QPoint(150, 150);
+    ImageViewer *newViewer = new ImageViewer(originalImage.clone(),
+                                             newTitle, nullptr, // Parent is null for new top-level window
+                                             newPos, mainWindow);
+    newViewer->setZoom(currentScale); // Apply current zoom to duplicate
+    newViewer->show();
+}
+
+// Opens a file dialog to save the current image.
+void ImageViewer::saveImageAs() {
+    QString filePath = QFileDialog::getSaveFileName(this, "Save Image As", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif *.tiff)");
+    if (!filePath.isEmpty()) {
+        std::vector<int> compression_params;
+        if (filePath.endsWith(".jpg", Qt::CaseInsensitive) || filePath.endsWith(".jpeg", Qt::CaseInsensitive)) {
+            compression_params.push_back(cv::IMWRITE_JPEG_QUALITY);
+            compression_params.push_back(95);
+            // JPEG quality (0-100)
+        } else if (filePath.endsWith(".png", Qt::CaseInsensitive)) {
+            compression_params.push_back(cv::IMWRITE_PNG_COMPRESSION);
+            compression_params.push_back(3); // PNG compression level (0-9)
+        }
+#ifdef _WIN32
+        std::string path = filePath.toLocal8Bit().constData();
+        // Safer conversion for Windows paths
+#else
+        std::string path = filePath.toUtf8().constData();
+#endif
+        try {
+            if (!cv::imwrite(path, originalImage, compression_params)) {
+                QMessageBox::warning(this, "Save Error", "Failed to save the image. Check file path and permissions.");
+            }
+        } catch (const cv::Exception& ex) {
+            QMessageBox::critical(this, "OpenCV Save Error", QString("Error saving image: %1").arg(ex.what()));
+        }
+    }
+}
+
+
+// ======================================================================
+// `Image Type Conversion Slots`
+// ======================================================================
+// Converts the current image to grayscale.
+void ImageViewer::convertToGrayscale() {
+    pushToUndoStack();
+    originalImage = ImageProcessing::convertToGrayscale(originalImage);
+    updateImage();
+}
+
+// Converts the current grayscale image to binary using a default threshold.
+void ImageViewer::binarise() {
+    pushToUndoStack();
+    originalImage = ImageProcessing::binarise(originalImage);
+    updateImage();
+}
+
+// Splits a color image into its B, G, R channels, displaying each in a new window.
+void ImageViewer::splitColorChannels() {
+    if (!mainWindow || originalImage.channels() < 3) { // Added channel check
+        QMessageBox::warning(this, "Split Error", "Cannot split channels. Image must be 3 or 4 channel color.");
+        return;
+    }
+    std::vector<cv::Mat> channels = ImageProcessing::splitColorChannels(originalImage);
+    if (channels.size() >= 3) { // Allow for 4 channels (ignore alpha maybe?)
+        (new ImageViewer(channels[0], windowTitle() + " - Blue", nullptr, pos() + QPoint(30, 30), mainWindow))->show();
+        (new ImageViewer(channels[1], windowTitle() + " - Green", nullptr, pos() + QPoint(60, 60), mainWindow))->show();
+        (new ImageViewer(channels[2], windowTitle() + " - Red", nullptr, pos() + QPoint(90, 90), mainWindow))->show();
+    } else {
+        QMessageBox::warning(this, "Split Error", "Failed to split channels.");
+    }
+}
+
+// Converts a color image to HSV and Lab color spaces, displaying each in a new window.
+void ImageViewer::convertToHSVLab() {
+    if (!mainWindow || originalImage.channels() < 3) { // Added channel check
+        QMessageBox::warning(this, "Conversion Error", "Cannot convert. Image must be 3 or 4 channel color.");
+        return;
+    }
+    cv::Mat hsv = ImageProcessing::convertToHSV(originalImage);
+    cv::Mat lab = ImageProcessing::convertToLab(originalImage);
+    if (!hsv.empty()) {
+        (new ImageViewer(hsv, windowTitle() + " - HSV", nullptr, pos() + QPoint(30, 30), mainWindow))->show();
+    } else {
+        QMessageBox::warning(this, "Conversion Error", "Could not convert to HSV.");
+    }
+    if (!lab.empty()) {
+        (new ImageViewer(lab, windowTitle() + " - Lab", nullptr, pos() + QPoint(60, 60), mainWindow))->show();
+    } else {
+        QMessageBox::warning(this, "Conversion Error", "Could not convert to Lab.");
+    }
+}
+
+
+// ======================================================================
+// `Histogram Operations Slots`
+// ======================================================================
+// Applies histogram stretching to the grayscale image.
+void ImageViewer::stretchHistogram() {
+    pushToUndoStack();
+    originalImage = ImageProcessing::stretchHistogram(originalImage);
+    updateImage();
+}
+
+// Applies histogram equalization to the grayscale image.
+void ImageViewer::equalizeHistogram() {
+    pushToUndoStack();
+    originalImage = ImageProcessing::equalizeHistogram(originalImage);
+    updateImage();
+}
+
+
+// ======================================================================
+// `Point Operations Slots`
+// ======================================================================
+// Applies negation (inversion) to the grayscale image.
+void ImageViewer::applyNegation() {
+    pushToUndoStack();
+    originalImage = ImageProcessing::applyNegation(originalImage);
+    updateImage();
+}
+
+// Opens a dialog for applying range stretching to the grayscale image.
+void ImageViewer::rangeStretching() {
+    RangeStretchingDialog dialog(this);
+    setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
+        return ImageProcessing::applyRangeStretching(originalImage, dialog.getP1(),
+                                                     dialog.getP2(), dialog.getQ3(), dialog.getQ4());
+    });
+    dialog.exec();
+}
+
+// Opens a dialog for applying posterization to the grayscale image.
+void ImageViewer::applyPosterization() {
+    InputDialog dialog(this);
+    auto *levelSpin = new QSpinBox;
+    levelSpin->setRange(2, 256);
+    levelSpin->setValue(4);
+    dialog.addInput("Levels", levelSpin);
+    setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
+        return ImageProcessing::applyPosterization(originalImage, dialog.getValue("Levels").toInt());
+    });
+
+    dialog.exec();
+}
+
+// Opens a dialog for applying bitwise operations between the current image and another open image.
+void ImageViewer::applyBitwiseOperation() {
+    if (originalImage.empty() || !mainWindow) return;
+    BitwiseOperationDialog dialog(this, mainWindow->openedImages);
+    setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
+        return dialog.getResult();
+    });
+    dialog.exec();
+}
+
+// Initiates the process for selecting two points and displaying the line profile between them.
 void ImageViewer::showLineProfile() {
-    if (originalImage.empty() || originalImage.channels() != 1) { // Added empty check
-        QMessageBox::warning(this, "Invalid Image", "Line profile requires a non-empty grayscale or binary image.");
+    if (originalImage.empty() || originalImage.channels() != 1) {
+        QMessageBox::warning(this, "Invalid Image", "Line profile requires a grayscale image.");
         return;
     }
 
-    QMessageBox::information(this, "Select Points", "Please click two points on the image to define the profile line.");
-    std::vector<cv::Point> points = getUserSelectedPoints(2); // Get 2 points
+    selectedPoints.clear();
+    pointsToSelect = 2;
+    enablePointSelection();
 
-    if (points.size() != 2) {
-        QMessageBox::warning(this, "Selection Error", "Two points must be selected. Line profile cancelled.");
-        // updateImage(); // Restore original view if temp changes were made (none yet)
-        return;
-    }
+    PointSelectionDialog* dialog = new PointSelectionDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
+    connect(dialog, &QDialog::accepted, this, [=]() {
+        disablePointSelection();
+        updateImage();
+        if (selectedPoints.size() == 2) {
+            drawLineProfile(selectedPoints[0], selectedPoints[1]);
+        }
+    });
+    connect(dialog, &QDialog::rejected, this, [=]() {
+        disablePointSelection();
+        updateImage();
+    });
+}
 
-    cv::Point p1 = points[0];
-    cv::Point p2 = points[1];
-
+// Extracts pixel values along a line and displays them in a chart dialog.
+void ImageViewer::drawLineProfile(const cv::Point& p1, const cv::Point& p2) {
     // --- Draw temporary line on a copy ---
     cv::Mat displayImage;
     // Always convert to color for drawing the line, even if original is gray
@@ -1100,14 +1058,16 @@ void ImageViewer::showLineProfile() {
     // Make line thickness relative to image size, minimum 1
     int lineThickness = std::max(1, static_cast<int>(std::round(std::max(displayImage.cols, displayImage.rows) / 500.0)));
     cv::line(displayImage, p1, p2, cv::Scalar(0, 0, 255), lineThickness); // Red line
-    showTempImage(displayImage); // Show the image with the line TEMPORARILY
+    showTempImage(displayImage);
+    // Show the image with the line TEMPORARILY
     // --- End temporary line ---
 
     // --- Extract pixel values along the line from the ORIGINAL image ---
     std::vector<uchar> values;
     try {
         // Use LineIterator on the original CV_8UC1 image
-        cv::LineIterator it(originalImage, p1, p2, 8); // 8-connected iterator
+        cv::LineIterator it(originalImage, p1, p2, 8);
+        // 8-connected iterator
         values.reserve(it.count);
         for (int i = 0; i < it.count; i++, ++it) {
             // Dereference the iterator pointer to get the pixel value pointer, then dereference that
@@ -1137,17 +1097,19 @@ void ImageViewer::showLineProfile() {
                         .arg(p1.x).arg(p1.y).arg(p2.x).arg(p2.y));
     chart->createDefaultAxes(); // Creates axes based on series data
     chart->legend()->hide();
-
     // Customize Axes
     QValueAxis *axisX = qobject_cast<QValueAxis*>(chart->axes(Qt::Horizontal).first());
     QValueAxis *axisY = qobject_cast<QValueAxis*>(chart->axes(Qt::Vertical).first());
     if(axisX) {
-        axisX->setRange(0, values.size() > 0 ? values.size() - 1 : 0); // Handle empty values case
+        axisX->setRange(0, values.size() > 0 ? values.size() - 1 : 0);
+        // Handle empty values case
         axisX->setTitleText("Distance along line (pixels)");
-        axisX->setLabelFormat("%d"); // Integer labels
+        axisX->setLabelFormat("%d");
+        // Integer labels
     }
     if(axisY) {
-        axisY->setRange(0, 255); // Intensity range
+        axisY->setRange(0, 255);
+        // Intensity range
         axisY->setTitleText("Pixel Intensity");
         axisY->setLabelFormat("%d");
     }
@@ -1157,28 +1119,352 @@ void ImageViewer::showLineProfile() {
     // --- End plot setup ---
 
     // --- Show plot in a Dialog ---
-    QDialog *dialog = new QDialog(this); // Parent dialog to image viewer
-    dialog->setAttribute(Qt::WA_DeleteOnClose); // Ensure dialog is deleted
+    QDialog *dialog = new QDialog(this);
+    // Parent dialog to image viewer
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    // Ensure dialog is deleted
     dialog->setWindowTitle("Line Profile Plot");
     QVBoxLayout *layout = new QVBoxLayout(dialog);
     layout->addWidget(chartView);
     dialog->resize(600, 400);
     // Position dialog relative to main window or image viewer
-    dialog->move(this->mapToGlobal(QPoint(50, 50)));
-
+    dialog->move(this->mapToGlobal(QPoint(200, 50)));
     // Connect dialog finished signal to restore the original image view
     // Using lambda to capture 'this' safely
     connect(dialog, &QDialog::finished, this, [this]() {
         this->updateImage(); // Restore original image display
     });
-
     dialog->show(); // Show non-modally
-    // --- End plot dialog ---
 }
 
-// ==========================================================================
-// Group 2: Image Viewer Core & Management - HELPERS / CLOSE EVENT
-// ==========================================================================
+// Opens a dialog for applying global thresholding to the grayscale image.
+void ImageViewer::applyGlobalThreshold() {
+    InputDialog dialog(this);
+    auto *levelSpin = new QSpinBox;
+    levelSpin->setRange(0, 255);
+    levelSpin->setValue(128);
+    dialog.addInput("Threshold", levelSpin);
+    setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
+        return ImageProcessing::applyGlobalThreshold(originalImage, dialog.getValue("Threshold").toInt());
+    });
+
+    dialog.exec();
+}
+
+// Applies adaptive thresholding to the grayscale image.
+void ImageViewer::applyAdaptiveThreshold() {
+    pushToUndoStack();
+    originalImage = ImageProcessing::applyAdaptiveThreshold(originalImage);
+    updateImage();
+}
+
+// Applies Otsu's thresholding to the grayscale image.
+void ImageViewer::applyOtsuThreshold() {
+    pushToUndoStack();
+    originalImage = ImageProcessing::applyOtsuThreshold(originalImage);
+    updateImage();
+}
+
+// Activates magic wand mode for a single click selection.
+void ImageViewer::activateMagicWandTool() {
+    magicWandMode = true;
+    QMessageBox::information(this, "Magic Wand", "Click on the image to select a region.");
+}
+
+// Initiates the magic wand segmentation process after point selection.
+void ImageViewer::applyMagicWandSegmentation() {
+    if (originalImage.empty()) {
+        QMessageBox::warning(this, "Invalid Image", "Image is empty.");
+        return;
+    }
+
+    selectedPoints.clear();
+    pointsToSelect = 1;
+    enablePointSelection();
+
+    PointSelectionDialog* dialog = new PointSelectionDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
+    connect(dialog, &QDialog::accepted, this, [=]() {
+        disablePointSelection();
+        updateImage();
+        if (selectedPoints.size() == 1) {
+            InputDialog dialog(this);
+            auto *levelSpin = new QSpinBox;
+            levelSpin->setRange(0, 255);
+            levelSpin->setValue(15);
+            dialog.addInput("Tolerance", levelSpin);
+            auto *modesCombo = new QComboBox;
+            modesCombo->addItems({"Mask", "Masked image"});
+            dialog.addInput("Output mode", modesCombo);
+
+            setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
+                cv::Mat previewSource;
+
+                if (originalImage.channels() == 4) {
+                    cv::cvtColor(originalImage, previewSource, cv::COLOR_BGRA2BGR);
+                }
+                else {
+                    previewSource = originalImage.clone();
+                }
+                cv::Mat mask = ImageProcessing::magicWandSegmentation(originalImage, selectedPoints[0], dialog.getValue("Tolerance").toInt());
+                if(dialog.getValue("Output mode").toString() == "Masked image") {
+                    cv::Mat maskedImage = cv::Mat::zeros(previewSource.size(), previewSource.type());
+                    previewSource.copyTo(maskedImage, mask);
+                    return maskedImage;
+                }
+                else {
+                    return mask;
+                }
+            });
+
+            dialog.exec();
+        }
+    });
+    connect(dialog, &QDialog::rejected, this, [=]() {
+        disablePointSelection();
+        updateImage();
+    });
+}
+
+// Initiates the GrabCut segmentation process after rectangle selection.
+void ImageViewer::applyGrabCutSegmentation() {
+    if (originalImage.empty()) {
+        QMessageBox::warning(this, "Invalid Image", "Image is empty.");
+        return;
+    }
+    selectedPoints.clear();
+    pointsToSelect = 2;
+    enablePointSelection();
+    rectangleMode = true;
+
+    PointSelectionDialog* dialog = new PointSelectionDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
+    connect(dialog, &QDialog::accepted, this, [=]() {
+        disablePointSelection();
+        rectangleMode = false;
+        updateImage();
+        if (selectedPoints.size() == 2) {
+            InputDialog dialog(this);
+            auto *levelSpin = new QSpinBox;
+            levelSpin->setRange(0, 20);
+            levelSpin->setValue(5);
+            dialog.addInput("Iterations", levelSpin);
+
+            setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
+                cv::Point p1 = selectedPoints[0];
+                cv::Point p2 = selectedPoints[1];
+                int x = std::min(p1.x, p2.x);
+                int y = std::min(p1.y, p2.y);
+                int width = std::abs(p1.x - p2.x);
+                int height = std::abs(p1.y - p2.y);
+                cv::Rect rect(x, y, width, height);
+                return ImageProcessing::grabCutSegmentation(originalImage, rect, dialog.getValue("Iterations").toInt());
+
+            });
+
+            dialog.exec();
+        }
+    });
+    connect(dialog, &QDialog::rejected, this, [=]() {
+        disablePointSelection();
+        rectangleMode = false;
+        updateImage();
+    });
+}
+
+
+// ======================================================================
+// `Filtering & Edge Detection Slots`
+// ======================================================================
+// Applies a 3x3 box blur filter.
+void ImageViewer::applyBlur() {
+    pushToUndoStack();
+    originalImage = ImageProcessing::applyBoxBlur(originalImage, 3, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
+    updateImage();
+}
+
+// Applies a 3x3 Gaussian blur filter.
+void ImageViewer::applyGaussianBlur() {
+    pushToUndoStack();
+    originalImage = ImageProcessing::applyGaussianBlur(originalImage, 3, 0, 0, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
+    updateImage();
+}
+
+// Applies Sobel edge detection (default x-direction).
+void ImageViewer::applySobelEdgeDetection() {
+    pushToUndoStack();
+    originalImage = ImageProcessing::applySobelEdgeDetection(originalImage, 3, 1, 0, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
+    updateImage();
+}
+
+// Applies Laplacian edge detection.
+void ImageViewer::applyLaplacianEdgeDetection() {
+    pushToUndoStack();
+    originalImage = ImageProcessing::applyLaplacianEdgeDetection(originalImage, 1, 1, 0, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
+    updateImage();
+}
+
+// Applies Canny edge detection with default thresholds.
+void ImageViewer::applyCannyEdgeDetection() {
+    pushToUndoStack();
+    originalImage = ImageProcessing::applyCannyEdgeDetection(originalImage, 50, 150); // Default thresholds
+    updateImage();
+}
+
+// Opens a dialog for Hough line detection on a binary image (prompts for Canny if needed).
+void ImageViewer::applyHoughLineDetection() {
+    if (originalImage.empty()) return;
+    cv::Mat edgeImage;
+    // Check if image is already binary (0s and 255s only)
+    bool isBinary = false;
+    if (originalImage.type() == CV_8UC1) {
+        cv::Mat nonBinary = (originalImage != 0) & (originalImage != 255);
+        isBinary = (cv::countNonZero(nonBinary) == 0);
+    }
+
+    if (!isBinary) {
+        QMessageBox::StandardButton reply;
+        reply = QMessageBox::question(this, "Hough Lines",
+                                      "Hough transform requires a binary image.\nApply Canny edge detection (50, 150) first?",
+                                      QMessageBox::Yes|QMessageBox::No);
+        if (reply == QMessageBox::Yes) {
+            // Convert to grayscale if necessary before Canny
+            cv::Mat grayForCanny;
+            if (originalImage.channels() == 1) {
+                grayForCanny = originalImage;
+            } else {
+                grayForCanny = ImageProcessing::convertToGrayscale(originalImage);
+            }
+            edgeImage = ImageProcessing::applyCannyEdgeDetection(grayForCanny, 50, 150);
+            pushToUndoStack();
+            originalImage = edgeImage;
+            updateImage();
+        } else {
+            return;
+            // User chose not to proceed
+        }
+    } else {
+        edgeImage = originalImage.clone();
+        // Use the binary image directly
+    }
+
+    if (edgeImage.empty() || edgeImage.type() != CV_8UC1) { // Double check edgeImage
+        QMessageBox::warning(this, "Hough Error", "Could not obtain a valid binary edge image for Hough transform.");
+        return;
+    }
+
+    HoughDialog dialog(this);
+
+    setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
+        return ImageProcessing::detectHoughLines(edgeImage, dialog.getRho(),
+                                                 dialog.getThetaDegrees() * CV_PI / 180.0, dialog.getThreshold());
+    });
+    dialog.exec();
+}
+
+// Applies a sharpening filter based on the selected option.
+void ImageViewer::applySharpening(int option) {
+    pushToUndoStack();
+    originalImage = ImageProcessing::applySharpening(originalImage, option, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
+    updateImage();
+}
+
+// Opens a dialog to select direction for Prewitt edge detection.
+void ImageViewer::applyPrewittEdgeDetection() {
+    DirectionSelectionDialog dialog(this);
+    setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
+        return ImageProcessing::applyPrewittEdgeDetection(originalImage, dialog.getSelectedDirection(),
+                                                          mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
+    });
+    dialog.exec();
+}
+
+// Opens a dialog to define and apply a custom convolution kernel.
+void ImageViewer::applyCustomFilter() {
+    CustomFilterDialog dialog(this);
+    setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
+        return ImageProcessing::applyCustomFilter(originalImage, dialog.getKernel(), true,
+                                                  mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
+    });
+    dialog.exec();
+}
+
+// Opens a dialog to select kernel size for the median filter.
+void ImageViewer::applyMedianFilter() {
+    InputDialog dialog(this);
+
+    // Create kernel size dropdown
+    auto *kernelCombo = new QComboBox;
+    kernelCombo->addItems({"3", "5", "7", "9"});
+    dialog.addInput("Kernel Size", kernelCombo);
+
+    setupPreview(&dialog, dialog.getPreviewCheckBox(), [&]() {
+        return ImageProcessing::applyMedianFilter(
+            originalImage,
+            dialog.getValue("Kernel Size").toString().toInt(),
+            mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT
+            );
+    });
+    dialog.exec();
+}
+
+// Opens a dialog to define and apply a two-step (separable) filter.
+void ImageViewer::applyTwoStepFilter() {
+    TwoStepFilterDialog filterDialog(this);
+    setupPreview(&filterDialog, filterDialog.getPreviewCheckBox(), [&]() {
+        return ImageProcessing::applyTwoStepFilter(originalImage.clone(), filterDialog.getKernel1(),
+                                                   filterDialog.getKernel2(), mainWindow->getBorderOption());
+    });
+    filterDialog.exec();
+}
+
+
+// ======================================================================
+// `Morphology Operations Slots`
+// ======================================================================
+// Applies erosion using the selected structuring element type.
+void ImageViewer::applyErosion(StructuringElementType type) {
+    pushToUndoStack();
+    originalImage = ImageProcessing::applyErosion(originalImage, type, 1, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
+    updateImage();
+}
+
+// Applies dilation using the selected structuring element type.
+void ImageViewer::applyDilation(StructuringElementType type) {
+    pushToUndoStack();
+    originalImage = ImageProcessing::applyDilation(originalImage, type, 1, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
+    updateImage();
+}
+
+// Applies morphological opening using the selected structuring element type.
+void ImageViewer::applyOpening(StructuringElementType type) {
+    pushToUndoStack();
+    originalImage = ImageProcessing::applyOpening(originalImage, type, 1, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
+    updateImage();
+}
+
+// Applies morphological closing using the selected structuring element type.
+void ImageViewer::applyClosing(StructuringElementType type) {
+    pushToUndoStack();
+    originalImage = ImageProcessing::applyClosing(originalImage, type, 1, mainWindow ? mainWindow->getBorderOption() : cv::BORDER_DEFAULT);
+    updateImage();
+}
+
+// Applies skeletonization to the binary image.
+void ImageViewer::applySkeletonization() {
+    pushToUndoStack();
+    // Assuming Diamond is default or appropriate here
+    originalImage = ImageProcessing::applySkeletonization(originalImage, Diamond);
+    updateImage();
+}
+
+
+// ======================================================================
+// `Helper Functions`
+// ======================================================================
+// Converts a cv::Mat to a QImage based on its type.
 QImage ImageViewer::MatToQImage(const cv::Mat &mat) {
     if (mat.type() == CV_8UC3) {
         return QImage(mat.data, mat.cols, mat.rows, mat.step, QImage::Format_RGB888).rgbSwapped();
@@ -1188,38 +1474,4 @@ QImage ImageViewer::MatToQImage(const cv::Mat &mat) {
         return QImage(mat.data, mat.cols, mat.rows, mat.step, QImage::Format_Grayscale8);
     }
     return QImage(); // Invalid image
-}
-
-// Handle window close event
-void ImageViewer::closeEvent(QCloseEvent *event) {
-    // 1. Close associated histogram window (if open)
-    if (histogramWindow) {
-        // Closing the window will trigger its WA_DeleteOnClose attribute,
-        // which emits destroyed(), calling onHistogramClosed() to nullptr the pointer.
-        histogramWindow->close();
-        // We don't delete histogramWindow here, WA_DeleteOnClose handles it.
-        histogramWindow = nullptr; // Defensive nullification
-    }
-
-    // 2. Remove this viewer from the MainWindow's list
-    if (mainWindow) {
-        mainWindow->openedImages.erase(
-            std::remove(mainWindow->openedImages.begin(), mainWindow->openedImages.end(), this),
-            mainWindow->openedImages.end()
-            );
-    }
-
-    // 3. Clean up other owned resources (like LUT if it wasn't parented)
-    if (LUT && LUT->parent() != this) { // Example check if parenting isn't guaranteed
-        delete LUT; // Or LUT->deleteLater();
-        LUT = nullptr;
-    }
-    // Note: Widgets parented to 'this' (like LUT, imageLabel, zoomInput, menuBar)
-    // will be deleted automatically by Qt's parent-child mechanism when 'this' is deleted.
-    // Operations in operationsList might need explicit deletion if not parented.
-    qDeleteAll(operationsList); // If operations are dynamically allocated and not parented elsewhere. Be cautious.
-    operationsList.clear();
-
-    // 4. Accept the event to allow the window to close
-    QWidget::closeEvent(event); // Call base class implementation
 }
