@@ -90,7 +90,15 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y qt6-base-dev libqt6widgets6 libqt6charts6 qt6-charts-dev libopencv-dev
+        echo -------------------------------------------------------------------------------------------------------------
+        sudo apt-get install -y python3-pip
+        echo -------------------------------------------------------------------------------------------------------------
+        pip install aqtinstall
+        echo -------------------------------------------------------------------------------------------------------------
+        sudo apt-get install -y libopencv-dev qt6-base-dev
+        echo -------------------------------------------------------------------------------------------------------------
+        pwd
+        aqt install-qt linux desktop 6.8.2 linux_gcc_64 -m qtcharts
         mkdir -p /home/runner/aptcache
         sudo find /var/cache/apt/archives/ -type f -name '*.deb' -size -20M -exec cp --parents {} /home/runner/aptcache/ \;
         sudo chown -R $(whoami) /home/runner/aptcache
@@ -116,7 +124,7 @@ jobs:
       run: |
         cmake -B ${{ steps.strings.outputs.build-output-dir }} -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DCMAKE_PREFIX_PATH=D:\a\APO-Lab-App\APO-Lab-App\6.8.2\msvc2019_64\lib\cmake
       env:
-        QT_DIR: D:\a\APO-Lab-App\APO-Lab-App\6.8.2\msvc2019_64\lib\cmake
+        QT_DIR: D:\a\APO-Lab-App\APO-Lab-App\6.8.2\msvc2022_64\lib\cmake
 
 
     - name: Configure CMake for Ubuntu
@@ -125,6 +133,7 @@ jobs:
         cmake -B ${{ steps.strings.outputs.build-output-dir }} \
               -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
               -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
+              -DCMAKE_PREFIX_PATH="/home/runner/work/APO-Lab-App/APO-Lab-App/6.8.2/gcc_64/lib/cmake" \
               -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
     - name: Build
