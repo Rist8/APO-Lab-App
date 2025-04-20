@@ -125,6 +125,9 @@ void MainWindow::openImage() {
 // ==========================================================================
 void MainWindow::showInfo() {
     QMessageBox::information(this, "About",
-                             "Application for APO subject in WIT academy\n"
-                             "Autor: Rist8\n");
+                             "Aplikacja zbiorcza z ćwiczeń laboratoryjnych\n"
+                             "Autor: Mikhail Harbuz\n"
+                             "Prowadzący: dr inż. Łukasz Roszkowiak\n"
+                             "Algorytmy Przetwarzania Obrazów 2024\n"
+                             "WIT grupa ID: ID06IO1");
 }

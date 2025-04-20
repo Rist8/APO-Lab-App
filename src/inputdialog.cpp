@@ -25,6 +25,12 @@ void InputDialog::addInput(const QString &label, QSpinBox *spinBox) {
     inputWidgets[label] = spinBox;
 }
 
+void InputDialog::addInput(const QString &label, QDoubleSpinBox *doubleSpinBox) {
+    formLayout->addRow(label, doubleSpinBox);
+    connect(doubleSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &PreviewDialogBase::previewRequested);
+    inputWidgets[label] = doubleSpinBox;
+}
+
 void InputDialog::addInput(const QString &label, QComboBox *comboBox) {
     formLayout->addRow(label, comboBox);
     connect(comboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &PreviewDialogBase::previewRequested);

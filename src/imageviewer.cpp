@@ -2,6 +2,7 @@
 #include "imageprocessing.h" // Include the new algorithms header
 #include "clickablelabel.h"
 #include "houghdialog.h"
+#include "inpaintingdialog.h"
 #include "inputdialog.h"
 #include "pointselectiondialog.h"
 #include "rangestretchingdialog.h"
@@ -203,8 +204,10 @@ void ImageViewer::createMenu() {
                                          ImageOperation::Grayscale, [this]() { this->binarise(); }));
     registerOperation(new ImageOperation("Split Color Channels", this, imageProcessingMenu,
                                          ImageOperation::Color, [this]() { this->splitColorChannels(); }));
-    registerOperation(new ImageOperation("Convert to HSV/Lab", this, imageProcessingMenu,
-                                         ImageOperation::Color, [this]() { this->convertToHSVLab(); }));
+    registerOperation(new ImageOperation("Convert to HSV", this, imageProcessingMenu,
+                                         ImageOperation::Color, [this]() { this->convertToHSV(); }));
+    registerOperation(new ImageOperation("Convert to Lab", this, imageProcessingMenu,
+                                         ImageOperation::Color, [this]() { this->convertToLab(); }));
     // --- Histogram Menu --- (Keep separate for consistency)
     QMenu *histogramMenu = new QMenu("Histogram Ops", this);
     registerOperation(new ImageOperation("Stretch Histogram", this, histogramMenu,
@@ -232,6 +235,12 @@ void ImageViewer::createMenu() {
     registerOperation(new ImageOperation("Grab cut...", this, pointOperationsMenu,
                                          ImageOperation::All,
                                          [this]() { this->applyGrabCutSegmentation(); }));
+    registerOperation(new ImageOperation("Watershed Segmentation", this, pointOperationsMenu,
+                                         ImageOperation::All,
+                                         [this]() { this->applyWatershedSegmentation(); }));
+    registerOperation(new ImageOperation("Inpaint Image...", this, pointOperationsMenu,
+                                         ImageOperation::Grayscale,
+                                         [this]() { this->applyInpainting(); }));
     pointOperationsMenu->addSeparator();
     registerOperation(new ImageOperation("Range Stretching...", this, pointOperationsMenu,
                                          ImageOperation::Grayscale, [this]() { this->rangeStretching(); }));
@@ -400,8 +409,7 @@ void ImageViewer::updateOperationsEnabledState() {
         }
     }
     if(lutAction) {
-        lutAction->setEnabled(type == ImageType::Grayscale);
-        // LUT only for grayscale
+        lutAction->setEnabled(type == ImageType::Grayscale || type == ImageType::Binary);
     }
 }
 
@@ -444,7 +452,9 @@ void ImageViewer::updateImage() {
             cv::pyrUp(displayImage, displayImage);
         }
     }
-
+    if(showingMaskMode)
+        if(drawnMask.size == displayImage.size)
+            displayImage |= drawnMask;
 
     QImage qimg = MatToQImage(displayImage);
     if (qimg.isNull()) {
@@ -662,6 +672,125 @@ void ImageViewer::onImageClicked(QMouseEvent* event) {
 
 }
 
+void ImageViewer::mousePressEvent(QMouseEvent* event) {
+    if (drawingMaskMode && event->button() == Qt::LeftButton && imageLabel && imageLabel->underMouse()) {
+        // Map position from ImageViewer widget coordinates to imageLabel coordinates
+        QPoint relativePos = imageLabel->mapFrom(this, event->pos());
+
+        // Check if the mapped position is within the actual pixmap bounds displayed in the label
+        QPixmap currentPixmapPtr = imageLabel->pixmap();
+        if (!currentPixmapPtr.isNull() && currentPixmapPtr.rect().contains(relativePos)) {
+            lastDrawPos = QPoint(); // Reset last position for the start of a new stroke
+            drawOnMask(relativePos); // Draw the first point/circle
+            event->accept(); // Indicate the event was handled
+            return; // Don't call base class if handled
+        }
+    }
+    // Handle other modes (point selection, etc.) or call base class
+    else if (selectingPoints) {
+        // Handle point selection logic...
+        event->accept();
+        return;
+    }
+
+    QWidget::mousePressEvent(event); // Call base class for other cases
+}
+
+void ImageViewer::mouseReleaseEvent(QMouseEvent* event) {
+    if (drawingMaskMode && event->button() == Qt::LeftButton) {
+        lastDrawPos = QPoint(); // Invalidate last position when mouse is released, ending the stroke
+        event->accept();
+        return;
+    }
+    // Handle other modes or call base class
+    else if (selectingPoints && event->button() == Qt::LeftButton) {
+        // Finalize point placement/drag...
+        event->accept();
+        return;
+    }
+
+    QWidget::mouseReleaseEvent(event);
+}
+
+void ImageViewer::mouseMoveEvent(QMouseEvent* event) {
+    if (drawingMaskMode && (event->buttons() & Qt::LeftButton) && imageLabel && imageLabel->underMouse()) {
+        QPoint relativePos = imageLabel->mapFrom(this, event->pos());
+
+        // Only draw if the cursor is over the displayed pixmap area
+        QPixmap currentPixmapPtr = imageLabel->pixmap();
+        if (!currentPixmapPtr.isNull() && currentPixmapPtr.rect().contains(relativePos)) {
+            // Check if lastDrawPos is valid (mouse didn't leave/re-enter image)
+            if (!lastDrawPos.isNull()) {
+                drawOnMask(relativePos);
+            } else {
+                // If lastDrawPos is null but button is down, treat as start of new stroke
+                lastDrawPos = QPoint(); // Ensure it's reset before drawing first point
+                drawOnMask(relativePos);
+            }
+            event->accept();
+            return;
+        } else {
+            // If mouse moves off the image while button is held, invalidate last pos
+            // so drawing stops until it re-enters.
+            lastDrawPos = QPoint();
+        }
+    }
+    // Handle other modes or call base class
+    else if (selectingPoints && (event->buttons() & Qt::LeftButton)) {
+        // Handle point dragging logic...
+        event->accept();
+        return;
+    }
+
+    QWidget::mouseMoveEvent(event);
+}
+
+
+void ImageViewer::drawOnMask(const QPoint& widgetPos) {
+    // Guard clauses
+    if (!drawingMaskMode || originalImage.empty() || drawnMask.empty() || widgetPos.isNull() || !imageLabel) return;
+
+    QPixmap currentPixmap = imageLabel->pixmap(Qt::ReturnByValue);
+    if (currentPixmap.isNull()) return;
+
+    // Calculate scale factors based on the displayed pixmap size vs original image size
+    QSize pixmapSize = currentPixmap.size();
+    if (pixmapSize.width() == 0 || pixmapSize.height() == 0) return; // Prevent division by zero
+
+    double xScale = static_cast<double>(originalImage.cols) / pixmapSize.width();
+    double yScale = static_cast<double>(originalImage.rows) / pixmapSize.height();
+
+    // Convert current widget position to image coordinates, clamping to bounds
+    int imgX = std::clamp(static_cast<int>(std::round(widgetPos.x() * xScale)), 0, originalImage.cols - 1);
+    int imgY = std::clamp(static_cast<int>(std::round(widgetPos.y() * yScale)), 0, originalImage.rows - 1);
+    cv::Point current(imgX, imgY);
+
+    // Use lastDrawPos for drawing lines; handle initial point separately
+    if (!lastDrawPos.isNull()) {
+        // Convert previous widget position to image coordinates
+        int lastImgX = std::clamp(static_cast<int>(std::round(lastDrawPos.x() * xScale)), 0, originalImage.cols - 1);
+        int lastImgY = std::clamp(static_cast<int>(std::round(lastDrawPos.y() * yScale)), 0, originalImage.rows - 1);
+        cv::Point previous(lastImgX, lastImgY);
+
+        // Draw line on the mask using currentBrushThickness
+        // LINE_8 is generally faster for thicker lines, LINE_AA is anti-aliased
+        cv::line(drawnMask, previous, current, cv::Scalar(255), currentBrushThickness, cv::LINE_8);
+    } else {
+        // For the very first point of a stroke, draw a filled circle to make it visible immediately
+        cv::circle(drawnMask, current, currentBrushThickness / 2, cv::Scalar(255), /*thickness*/ -1, cv::LINE_8);
+    }
+
+    // Update the visual display (shows image + blended overlay)
+    showTempImage(drawnMask | originalImage);
+
+    // Update last position *after* drawing for the next segment
+    lastDrawPos = widgetPos;
+}
+
+void ImageViewer::setBrushThickness(int thickness) {
+    currentBrushThickness = std::max(1, thickness); // Ensure thickness is at least 1 pixel
+}
+
 // Sets the zoom level based on the value entered in the zoom input field.
 void ImageViewer::setZoomFromInput() {
     if (!zoomInput) return;
@@ -740,10 +869,9 @@ void ImageViewer::toggleLUT() {
         LUT->hide();
         if(lutAction) lutAction->setChecked(false);
     } else {
-        updateHistogramTable();
-        // Update data *before* showing
         LUT->show();
         if(lutAction) lutAction->setChecked(true);
+        updateHistogramTable();
     }
     // Adjusting size might still be needed if LUT significantly changes window height needs
     adjustSize();
@@ -752,13 +880,67 @@ void ImageViewer::toggleLUT() {
 // Enables point selection mode and sets the cursor.
 void ImageViewer::enablePointSelection() {
     selectingPoints = true;
+    menuBar->setEnabled(false);
     setCursor(Qt::CrossCursor);
 }
 
 // Disables point selection mode and resets the cursor.
 void ImageViewer::disablePointSelection() {
     selectingPoints = false;
+    menuBar->setEnabled(true);
     unsetCursor();
+}
+
+void ImageViewer::enableMaskDrawing() {
+    if (originalImage.empty()) {
+        qWarning("ImageViewer::enableMaskDrawing: Cannot draw mask, no image loaded.");
+        return;
+    }
+
+    drawingMaskMode = true;
+    QApplication::setOverrideCursor(Qt::CrossCursor); // Use application override for consistency
+    if(menuBar) menuBar->setEnabled(false); // Disable menu during drawing
+
+    // Initialize mask if it's empty or has the wrong size
+    if (drawnMask.empty() || drawnMask.size() != originalImage.size()) {
+        drawnMask = cv::Mat::zeros(originalImage.size(), CV_8UC1); // Ensure 8-bit single channel
+    }
+    // Reset last position for a new drawing session
+    lastDrawPos = QPoint();
+    updateImage();
+}
+
+void ImageViewer::disableMaskDrawing() {
+    if (drawingMaskMode) {
+        drawingMaskMode = false;
+        QApplication::restoreOverrideCursor(); // Restore normal cursor
+        if(menuBar) menuBar->setEnabled(true); // Re-enable menu
+        lastDrawPos = QPoint(); // Clear last position
+    }
+}
+
+void ImageViewer::clearDrawnMask() {
+    if (!drawnMask.empty()) {
+        drawnMask.setTo(cv::Scalar(0)); // Set all pixels to 0
+        // If drawing mode is active, update the display immediately to show cleared mask
+        if (drawingMaskMode) {
+            updateImage();
+        }
+    }
+}
+
+void ImageViewer::enableMaskShowing() {
+    if(!showingMaskMode) {
+        showingMaskMode = true;
+        updateImage();
+    }
+}
+
+void ImageViewer::disableMaskShowing() {
+    if(showingMaskMode) {
+        showingMaskMode = false;
+        updateImage();
+    }
 }
 
 
@@ -932,26 +1114,37 @@ void ImageViewer::splitColorChannels() {
     }
 }
 
-// Converts a color image to HSV and Lab color spaces, displaying each in a new window.
-void ImageViewer::convertToHSVLab() {
+// Converts a color image to HSV color space, displaying channels each in a new window.
+void ImageViewer::convertToHSV() {
     if (!mainWindow || originalImage.channels() < 3) { // Added channel check
-        QMessageBox::warning(this, "Conversion Error", "Cannot convert. Image must be 3 or 4 channel color.");
+        QMessageBox::warning(this, "Split Error", "Cannot split channels. Image must be 3 or 4 channel color.");
         return;
     }
-    cv::Mat hsv = ImageProcessing::convertToHSV(originalImage);
-    cv::Mat lab = ImageProcessing::convertToLab(originalImage);
-    if (!hsv.empty()) {
-        (new ImageViewer(hsv, windowTitle() + " - HSV", nullptr, pos() + QPoint(30, 30), mainWindow))->show();
+    std::vector<cv::Mat> channels = ImageProcessing::convertToHSV(originalImage);
+    if (channels.size() >= 3) { // Allow for 4 channels (ignore alpha maybe?)
+        (new ImageViewer(channels[0], windowTitle() + " - Hue", nullptr, pos() + QPoint(30, 30), mainWindow))->show();
+        (new ImageViewer(channels[1], windowTitle() + " - Saturation", nullptr, pos() + QPoint(60, 60), mainWindow))->show();
+        (new ImageViewer(channels[2], windowTitle() + " - Value", nullptr, pos() + QPoint(90, 90), mainWindow))->show();
     } else {
-        QMessageBox::warning(this, "Conversion Error", "Could not convert to HSV.");
-    }
-    if (!lab.empty()) {
-        (new ImageViewer(lab, windowTitle() + " - Lab", nullptr, pos() + QPoint(60, 60), mainWindow))->show();
-    } else {
-        QMessageBox::warning(this, "Conversion Error", "Could not convert to Lab.");
+        QMessageBox::warning(this, "Split Error", "Failed to split channels.");
     }
 }
 
+// Converts a color image to Lab color space, displaying each channel in a new window.
+void ImageViewer::convertToLab() {
+    if (!mainWindow || originalImage.channels() < 3) { // Added channel check
+        QMessageBox::warning(this, "Split Error", "Cannot split channels. Image must be 3 or 4 channel color.");
+        return;
+    }
+    std::vector<cv::Mat> channels = ImageProcessing::convertToLab(originalImage);
+    if (channels.size() >= 3) { // Allow for 4 channels (ignore alpha maybe?)
+        (new ImageViewer(channels[0], windowTitle() + " - Lightness", nullptr, pos() + QPoint(30, 30), mainWindow))->show();
+        (new ImageViewer(channels[1], windowTitle() + " - a*", nullptr, pos() + QPoint(60, 60), mainWindow))->show();
+        (new ImageViewer(channels[2], windowTitle() + " - b*", nullptr, pos() + QPoint(90, 90), mainWindow))->show();
+    } else {
+        QMessageBox::warning(this, "Split Error", "Failed to split channels.");
+    }
+}
 
 // ======================================================================
 // `Histogram Operations Slots`
@@ -1273,6 +1466,96 @@ void ImageViewer::applyGrabCutSegmentation() {
         updateImage();
     });
 }
+
+//Applies Watershed algorithm for current image
+void ImageViewer::applyWatershedSegmentation() {
+    if (originalImage.empty()) return;
+
+    pushToUndoStack();
+    originalImage = ImageProcessing::applyWatershedSegmentation(originalImage);
+    updateImage();
+}
+
+void ImageViewer::applyInpainting() {
+    if (originalImage.empty()) {
+        QMessageBox::warning(this, "Inpainting", "No image loaded.");
+        return;
+    }
+    if (!mainWindow) {
+        QMessageBox::critical(this, "Inpainting Error", "Main window context is missing. Cannot proceed.");
+        return;
+    }
+
+    // --- Create and Configure the Inpainting Dialog ---
+    // Pass 'this' ImageViewer as the parent context for drawing,
+    // the list of other viewers, and the mainWindow for creating new windows.
+    InpaintingDialog* inpaintDialog = new InpaintingDialog(this, mainWindow->openedImages, mainWindow);
+    inpaintDialog->setAttribute(Qt::WA_DeleteOnClose); // Ensure dialog is deleted when closed
+    enableMaskShowing();
+    // --- Execute Dialog Modally ---
+    // Dialog manages enabling/disabling mask drawing mode internally now.
+    inpaintDialog->show();
+    connect(inpaintDialog, &InpaintingDialog::maskChanged, this, [=]() {
+        drawnMask = inpaintDialog->getSelectedMask();
+        updateImage();
+    });
+    connect(inpaintDialog, &QDialog::accepted, this, [=]() {
+        cv::Mat mask = inpaintDialog->getSelectedMask(); // Use the dialog's getter
+        updateImage();
+        if (mask.empty()) {
+            QMessageBox::warning(this, "Inpainting Error", "No valid mask was provided or selected.");
+            disableMaskShowing();
+            return;
+        }
+        if (mask.size() != originalImage.size()) {
+            QMessageBox::warning(this, "Inpainting Error", "Mask dimensions do not match the image.");
+            disableMaskShowing();
+            return;
+        }
+        // Ensure mask is CV_8UC1 (should be handled by getSelectedMask, but double-check)
+        if (mask.type() != CV_8UC1) {
+            QMessageBox::warning(this, "Inpainting Error", "Mask format is invalid (must be 8-bit single channel).");
+            disableMaskShowing();
+            return;
+        }
+        // --- Get Inpainting Parameters (Radius, Method) via separate dialog ---
+        InputDialog inputDialog(this); // Assuming InputDialog class exists
+        inputDialog.setWindowTitle("Inpainting Parameters");
+
+        auto* radiusSpin = new QDoubleSpinBox(&inputDialog); // Parent dialog for auto-deletion
+        radiusSpin->setRange(1.0, 200.0); // Example range
+        radiusSpin->setValue(5.0);
+        radiusSpin->setSingleStep(1.0);
+        radiusSpin->setSuffix(" px");
+
+        auto* methodCombo = new QComboBox(&inputDialog);
+        methodCombo->addItems({"Telea", "Navier-Stokes"});
+
+        inputDialog.addInput("Inpaint Radius:", radiusSpin); // Use addInput method of your InputDialog
+        inputDialog.addInput("Inpaint Method:", methodCombo);
+        setupPreview(&inputDialog, inputDialog.getPreviewCheckBox(), [&]() {
+            // Get parameters from InputDialog
+            int methodFlag = (methodCombo->currentText() == "Telea") ? cv::INPAINT_TELEA : cv::INPAINT_NS;
+            double radius = radiusSpin->value();
+
+            return ImageProcessing::applyInpainting(originalImage, mask, radius, methodFlag);
+        });
+
+        inputDialog.exec();
+        disableMaskDrawing();
+        disableMaskShowing();
+        clearMask();
+        updateImage();
+    });
+
+    connect(inpaintDialog, &QDialog::rejected, this, [=]() {
+        disableMaskDrawing();
+        disableMaskShowing();
+        clearMask();
+        updateImage();
+    });
+}
+
 
 
 // ======================================================================

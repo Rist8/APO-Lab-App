@@ -16,15 +16,15 @@
 #include <opencv2/opencv.hpp>
 #include <QImage>
 #include <QPixmap>
-#include "clickablelabel.h"
-#include "previewdialogbase.h"
+#include "clickablelabel.h" // Assuming this exists
+#include "previewdialogbase.h" // Assuming this exists
 
 // Forward declarations
 class MainWindow;
-class ImageOperation;
+class ImageOperation; // Assuming this exists
 class QLineEdit;
 class QTableWidget;
-class HistogramWidget; // Added forward declaration
+class HistogramWidget; // Assuming this exists
 
 // Enum for morphology structuring element type
 enum StructuringElementType {
@@ -48,6 +48,7 @@ public:
     // --- Getters ---
     cv::Mat getOriginalImage() const { return originalImage; }
     MainWindow* getMainWindow() const { return mainWindow; }
+    cv::Mat getDrawnMask() const { return drawnMask.clone(); } // Return a clone for safety
 
     // --- Setters ---
     void setUsePyramidScaling(bool enable) { usePyramidScaling = enable; updateImage();}
@@ -55,10 +56,15 @@ public:
     // ======================================================================
     // `UI Interaction & Control`
     // ======================================================================
-    void setZoom(double scale) { currentScale = scale; updateImage(); }
-    std::vector<cv::Point> getSelectedPoints() const { return selectedPoints; }
-    void enableInteractivePointSelection();
-    void disableInteractivePointSelection();
+    void setZoom(double scale) { currentScale = scale; } // Keep public if needed elsewhere
+    std::vector<cv::Point> getSelectedPoints() const; // Keep public
+    void enableInteractivePointSelection(); // Keep public
+    void disableInteractivePointSelection(); // Keep public
+    void enableMaskDrawing(); // Keep public
+    void disableMaskDrawing(); // Keep public
+    void enableMaskShowing(); // Keep public
+    void disableMaskShowing(); // Keep public
+    void clearDrawnMask(); // Keep public
 
     // ======================================================================
     // `Undo/Redo Management`
@@ -89,12 +95,19 @@ public:
         });
     }
 
+public slots: // Public slots for connections from other classes
+    // --- Added Setters for Inpainting ---
+    void setBrushThickness(int thickness);
+
 protected:
     // ======================================================================
     // `Event Handlers`
     // ======================================================================
     void wheelEvent(QWheelEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
 
 private slots:
     // ======================================================================
@@ -108,6 +121,7 @@ private slots:
     void enablePointSelection(); // Renamed from enableInteractivePointSelection
     void disablePointSelection(); // Renamed from disableInteractivePointSelection
 
+
     // ======================================================================
     // `File & View Operations Slots`
     // ======================================================================
@@ -120,7 +134,8 @@ private slots:
     void convertToGrayscale();
     void binarise();
     void splitColorChannels();
-    void convertToHSVLab(); // Splits into HSV and Lab viewers
+    void convertToHSV(); // Splits into HSV and Lab viewers
+    void convertToLab(); // Splits into HSV and Lab viewers
 
     // ======================================================================
     // `Histogram Operations Slots`
@@ -142,6 +157,8 @@ private slots:
     void activateMagicWandTool(); // Related to magic wand segmentation trigger
     void applyMagicWandSegmentation();
     void applyGrabCutSegmentation();
+    void applyWatershedSegmentation();
+    void applyInpainting(); // Slot for the inpainting operation
 
     // ======================================================================
     // `Filtering & Edge Detection Slots`
@@ -173,7 +190,7 @@ private:
     // ======================================================================
     // `UI Elements`
     // ======================================================================
-    ClickableLabel *imageLabel;
+    ClickableLabel *imageLabel; // Assuming ClickableLabel inherits QLabel or similar
     QLineEdit *zoomInput;
     HistogramWidget *histogramWindow = nullptr; // Pointer to the separate histogram window
     QTableWidget *LUT; // Table widget for histogram data (remains embedded)
@@ -185,12 +202,20 @@ private:
     // `Core State & Data`
     // ======================================================================
     cv::Mat originalImage; // The currently displayed image data
+    cv::Mat drawnMask;     // Mask being drawn (CV_8UC1)
+    bool drawingMaskMode = false;
+    bool showingMaskMode = false;
+    QPoint lastDrawPos;
     std::stack<cv::Mat> undoStack;
     std::stack<cv::Mat> redoStack;
-    double currentScale; // Current zoom level (1.0 = 100%)
+    double currentScale = 1.0; // Current zoom level (1.0 = 100%)
     MainWindow *mainWindow; // Pointer to the main application window
     QList<ImageOperation*> operationsList; // List of registered operations for state updates
     bool usePyramidScaling = false;
+
+    // --- Added for Inpainting Drawing Controls ---
+    int currentBrushThickness = 10;  // Default thickness
+    // --- End Added ---
 
     // ======================================================================
     // `Interaction Mode State`
@@ -228,6 +253,7 @@ private:
     void showTempImage(const cv::Mat &temp); // Temporarily displays an image (e.g., for line profile/preview)
     void drawTemporaryPoints(); // Draws points/lines during selection
     void drawLineProfile(const cv::Point& p1, const cv::Point& p2); // Draws the line profile chart
+    void drawOnMask(const QPoint& widgetPos); // Internal drawing function for mask
 
 
     // ======================================================================

@@ -46,14 +46,14 @@ std::vector<cv::Mat> splitColorChannels(const cv::Mat& inputImage);
      * @param inputImage The input BGR image.
      * @return The HSV image. Returns empty Mat if input is not 3-channel.
      */
-cv::Mat convertToHSV(const cv::Mat& inputImage);
+std::vector<cv::Mat> convertToHSV(const cv::Mat& inputImage);
 
 /**
      * @brief Converts a color image to Lab color space.
      * @param inputImage The input BGR image.
      * @return The Lab image. Returns empty Mat if input is not 3-channel.
      */
-cv::Mat convertToLab(const cv::Mat& inputImage);
+std::vector<cv::Mat> convertToLab(const cv::Mat& inputImage);
 
 // ==========================================================================
 // Group 6: Image Processing - Point Operations
@@ -376,6 +376,23 @@ cv::Mat magicWandSegmentation(const cv::Mat& inputImageRaw, const cv::Point& see
      * @return A grab cutted image.
      */
 cv::Mat grabCutSegmentation(const cv::Mat& inputImage, const cv::Rect& rect, int iterCount = 5);
+
+/**
+     * @brief Watershed algorithm with all preprocessing steps included.
+     * @param inputImage The input image.
+     * @return An image with the Watershed applied.
+     */
+cv::Mat applyWatershedSegmentation(const cv::Mat &inputImage);
+
+/**
+     * @brief Inpaitning algorithm.
+     * @param inputImage The input image.
+     * @param mask The inpainting mask.
+     * @param radius Radius value.
+     * @param method Used method.
+     * @return An image with the Inpainting applied.
+     */
+cv::Mat applyInpainting(const cv::Mat& inputImage, const cv::Mat& mask, double radius, int method);
 
 } // namespace ImageProcessing
 

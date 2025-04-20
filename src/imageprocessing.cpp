@@ -65,20 +65,24 @@ std::vector<cv::Mat> splitColorChannels(const cv::Mat& inputImage) {
     return channels;
 }
 
-cv::Mat convertToHSV(const cv::Mat& inputImage) {
-    cv::Mat outputImage;
+std::vector<cv::Mat> convertToHSV(const cv::Mat& inputImage) {
+    std::vector<cv::Mat> channels;
     if (!inputImage.empty() && inputImage.channels() >= 3) {
+        cv::Mat outputImage;
         cv::cvtColor(inputImage, outputImage, cv::COLOR_BGR2HSV);
+        channels = splitColorChannels(outputImage);
     }
-    return outputImage;
+    return channels;
 }
 
-cv::Mat convertToLab(const cv::Mat& inputImage) {
-    cv::Mat outputImage;
+std::vector<cv::Mat> convertToLab(const cv::Mat& inputImage) {
+    std::vector<cv::Mat> channels;
     if (!inputImage.empty() && inputImage.channels() >= 3) {
+        cv::Mat outputImage;
         cv::cvtColor(inputImage, outputImage, cv::COLOR_BGR2Lab);
+        channels = splitColorChannels(outputImage);
     }
-    return outputImage;
+    return channels;
 }
 
 
@@ -803,7 +807,159 @@ cv::Mat grabCutSegmentation(const cv::Mat& inputImage, const cv::Rect& rect, int
     return result;
 }
 
+using namespace cv;
+using namespace std;
 
+// Peak local max with label support
+Mat peakLocalMaxWithLabels(const Mat& image, const Mat& labels, int min_distance = 1) {
+    CV_Assert(image.size() == labels.size());
+    CV_Assert(labels.type() == CV_32S);
 
+    Mat img;
+    image.convertTo(img, CV_64F);
+    Mat output = Mat::zeros(image.size(), CV_8U);
+    map<int, vector<Point>> label_points;
+
+    for (int y = 0; y < img.rows; ++y) {
+        for (int x = 0; x < img.cols; ++x) {
+            int label = labels.at<int>(y, x);
+            if (label > 0) {
+                label_points[label].emplace_back(x, y);
+            }
+        }
+    }
+
+    for (const auto& [label, points] : label_points) {
+        if (points.empty()) continue;
+
+        Rect bbox = boundingRect(points);
+        Mat roi_img = img(bbox).clone();
+        Mat roi_mask = Mat::zeros(bbox.size(), CV_8U);
+
+        for (const auto& pt : points) {
+            roi_mask.at<uchar>(pt.y - bbox.y, pt.x - bbox.x) = 255;
+        }
+
+        Mat roi_dilated;
+        Mat kernel = getStructuringElement(MORPH_RECT, Size(2 * min_distance + 1, 2 * min_distance + 1));
+        dilate(roi_img, roi_dilated, kernel);
+
+        for (int y = 0; y < roi_img.rows; ++y) {
+            for (int x = 0; x < roi_img.cols; ++x) {
+                if (roi_mask.at<uchar>(y, x) &&
+                    roi_img.at<double>(y, x) == roi_dilated.at<double>(y, x)) {
+                    output.at<uchar>(bbox.y + y, bbox.x + x) = 255;
+                }
+            }
+        }
+    }
+
+    return output;
+}
+
+cv::Mat applyWatershedSegmentation(const cv::Mat &inputImage) {
+    cv::Mat image;
+    inputImage.copyTo(image);
+
+    // Ensure 3-channel color image for watershed and drawing
+    cv::Mat colorInput;
+    if (image.channels() == 1) {
+        cv::cvtColor(image, colorInput, cv::COLOR_GRAY2BGR);
+    } else {
+        colorInput = image.clone();
+    }
+
+    // Apply mean shift filtering only for color images
+    cv::Mat shifted;
+    if (colorInput.channels() == 3) {
+        pyrMeanShiftFiltering(colorInput, shifted, 21, 51);
+    } else {
+        shifted = colorInput.clone();
+    }
+
+    // Convert to grayscale if not already
+    cv::Mat gray;
+    if (shifted.channels() == 3) {
+        cv::cvtColor(shifted, gray, cv::COLOR_BGR2GRAY);
+    } else {
+        gray = shifted.clone();
+    }
+
+    // Check if already binary
+    cv::Mat thresh;
+    if (cv::countNonZero(gray == 0) + cv::countNonZero(gray == 255) == gray.total()) {
+        thresh = gray.clone();
+    } else {
+        cv::threshold(gray, thresh, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
+    }
+
+    // Morphological opening to remove noise
+    cv::Mat kernel = getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+    cv::Mat opening;
+    morphologyEx(thresh, opening, cv::MORPH_OPEN, kernel, cv::Point(-1, -1), 2);
+
+    // Distance transform
+    cv::Mat dist;
+    distanceTransform(opening, dist, cv::DIST_L2, 5);
+    normalize(dist, dist, 0.0, 1.0, cv::NORM_MINMAX);
+
+    // Adaptive threshold for sure foreground
+    double maxVal;
+    cv::minMaxLoc(dist, nullptr, &maxVal);
+    double sure_fg_threshold = 0.4 * maxVal; // adaptive
+    cv::Mat sure_fg_f;
+    threshold(dist, sure_fg_f, sure_fg_threshold, 1.0, cv::THRESH_BINARY);
+    cv::Mat sure_fg;
+    sure_fg_f.convertTo(sure_fg, CV_8U, 255.0);
+
+    // Improved sure background using closing
+    cv::Mat sure_bg;
+    morphologyEx(opening, sure_bg, cv::MORPH_CLOSE,
+                 getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5)), cv::Point(-1, -1), 1);
+
+    // Unknown region
+    cv::Mat unknown;
+    subtract(sure_bg, sure_fg, unknown);
+
+    // Connected components as markers
+    cv::Mat markers;
+    int numInitialLabels = connectedComponents(sure_fg, markers);
+    std::cout << "[INFO] Found " << (numInitialLabels - 1) << " initial markers (potential segments)." << std::endl;
+
+    // Adjust marker labels
+    markers += 1;
+    markers.setTo(0, unknown); // unknown is 0
+
+    // Apply watershed
+    watershed(shifted, markers);
+
+    if (markers.empty() || markers.type() != CV_32S) {
+        std::cerr << "Error: Watershed algorithm failed." << std::endl;
+        return cv::Mat();
+    }
+
+    // Draw final result
+    cv::Mat outputImage = colorInput.clone();
+    std::set<int> uniqueLabels;
+    for (int r = 0; r < markers.rows; ++r) {
+        for (int c = 0; c < markers.cols; ++c) {
+            int label = markers.at<int>(r, c);
+            if (label > 1) {
+                uniqueLabels.insert(label);
+            }
+        }
+    }
+
+    std::cout << "[INFO] Found " << uniqueLabels.size() << " final object segments after watershed." << std::endl;
+    outputImage.setTo(cv::Scalar(255, 0, 0), markers == -1);
+
+    return outputImage;
+}
+
+cv::Mat applyInpainting(const cv::Mat& inputImage, const cv::Mat& mask, double radius, int method) {
+    cv::Mat result;
+    cv::inpaint(inputImage, mask, result, radius, method);
+    return result;
+}
 
 } // namespace ImageProcessing

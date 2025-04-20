@@ -22,6 +22,8 @@ public:
     // Add input fields by label and widget
     void addInput(const QString &label, QSpinBox *spinBox);
 
+    void addInput(const QString &label, QDoubleSpinBox *doubleSpinBox);
+
     void addInput(const QString &label, QComboBox *comboBox);
 
     // Retrieve the value by label (returns QVariant)
