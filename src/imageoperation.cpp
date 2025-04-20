@@ -17,18 +17,30 @@ ImageOperation::ImageOperation(const QString &name,
     allowedTypes(supportedTypes), operationFunc(slotFunction), viewer(parentViewer),
     bind(keyBind){
 
+    QStringList list;
+    if (supportedTypes & ImageOperation::Grayscale) list << "Grayscale";
+    if (supportedTypes & ImageOperation::Color)     list << "Color";
+    if (supportedTypes & ImageOperation::Binary)    list << "Binary";
+
     action = new QAction(name, this);
     action->setCheckable(checkable);
 
     if(action){
         action->setShortcut(bind);
+        // Tooltip indicating which image types are supported
+        QString tooltipText = QString("Supported on: %1").arg(list.join(", "));
+        action->setToolTip(tooltipText);
     }
 
     connect(action, &QAction::triggered, this, [this]() {
         if (operationFunc) operationFunc();
     });
 
-    if (menu) menu->addAction(action);
+    if (menu) {
+        menu->addAction(action);
+        menu->installEventFilter(viewer);  // viewer = ImageViewer*
+    }
+
 }
 
 // ==========================================================================
@@ -59,3 +71,4 @@ void ImageOperation::updateActionState(ImageType currentImageType) {
 QAction* ImageOperation::getAction() const {
     return action;
 }
+

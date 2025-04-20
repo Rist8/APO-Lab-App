@@ -162,206 +162,196 @@ void ImageViewer::closeEvent(QCloseEvent *event) {
 // Creates the main menu bar and registers all image operations.
 void ImageViewer::createMenu() {
     menuBar = new QMenuBar(this);
+
     // --- File Menu ---
     QMenu *fileMenu = new QMenu("File", this);
-    QAction *undoAction = new QAction("Undo", this);
-    QAction *redoAction = new QAction("Redo", this);
-    undoAction->setShortcut(QKeySequence::Undo);
-    redoAction->setShortcut(QKeySequence::Redo);
-    connect(undoAction, &QAction::triggered, this, &ImageViewer::undo);
-    connect(redoAction, &QAction::triggered, this, &ImageViewer::redo);
-    fileMenu->addAction(undoAction);
-    fileMenu->addAction(redoAction);
-    fileMenu->addSeparator();
-    registerOperation(new ImageOperation("Duplicate", this, fileMenu,
-                                         ImageOperation::All,
-                                         [this]() { this->duplicateImage(); }, false,
-                                         QKeySequence("Ctrl+Shift+D")));
     registerOperation(new ImageOperation("Save As...", this, fileMenu,
                                          ImageOperation::All,
                                          [this]() { this->saveImageAs(); }, false,
                                          QKeySequence::Save));
+
+    // --- Edit Menu ---
+    QMenu *editMenu = new QMenu("Edit", this);
+    QAction *undoAction = new QAction("Undo", this);
+    QAction *redoAction = new QAction("Redo", this);
+    QAction *duplicateAction = new QAction("Duplicate Image", this);
+    QAction *drawMaskAction = new QAction("Draw Mask", this);
+
+    undoAction->setShortcut(QKeySequence::Undo);
+    redoAction->setShortcut(QKeySequence::Redo);
+    duplicateAction->setShortcut(QKeySequence("Ctrl+Shift+D"));
+
+    connect(undoAction, &QAction::triggered, this, &ImageViewer::undo);
+    connect(redoAction, &QAction::triggered, this, &ImageViewer::redo);
+    connect(duplicateAction, &QAction::triggered, this, &ImageViewer::duplicateImage);
+    connect(drawMaskAction, &QAction::triggered, this, &ImageViewer::drawMask);
+
+    editMenu->addAction(undoAction);
+    editMenu->addAction(redoAction);
+    editMenu->addSeparator();
+    editMenu->addAction(duplicateAction);
+    editMenu->addAction(drawMaskAction);
+
     // --- View Menu ---
     QMenu *viewMenu = new QMenu("View", this);
-    // Replace checkable action with a standard button/action
     showHistogramAction = new QAction("Show Histogram", this);
-    // New action name
-    showHistogramAction->setShortcut(QKeySequence("Ctrl+H")); // Optional: add shortcut
+    showHistogramAction->setShortcut(QKeySequence("Ctrl+H"));
     connect(showHistogramAction, &QAction::triggered, this, &ImageViewer::showHistogram);
-    // Connect to new slot
-    viewMenu->addAction(showHistogramAction); // Add the new action
+    viewMenu->addAction(showHistogramAction);
     viewMenu->addSeparator();
     registerOperation(new ImageOperation("Show LUT", this, viewMenu,
-                                         ImageOperation::Grayscale, // Only for grayscale
+                                         ImageOperation::Grayscale,
                                          [this]() { this->toggleLUT(); }, true));
-    // Keep LUT toggle checkable
 
-    // --- Image Type Menu ---
-    QMenu *imageProcessingMenu = new QMenu("Image Type", this);
-    registerOperation(new ImageOperation("Convert to Grayscale", this, imageProcessingMenu,
+    // --- Processing Menu ---
+    QMenu *processingMenu = new QMenu("Processing", this);
+
+    // -- Image Type Submenu --
+    QMenu *imageTypeMenu = processingMenu->addMenu("Image Type");
+    registerOperation(new ImageOperation("Convert to Grayscale", this, imageTypeMenu,
                                          ImageOperation::Color, [this]() { this->convertToGrayscale(); }));
-    registerOperation(new ImageOperation("Make Binary", this, imageProcessingMenu,
-                                         ImageOperation::Grayscale, [this]() { this->binarise(); }));
-    registerOperation(new ImageOperation("Split Color Channels", this, imageProcessingMenu,
-                                         ImageOperation::Color, [this]() { this->splitColorChannels(); }));
-    registerOperation(new ImageOperation("Convert to HSV", this, imageProcessingMenu,
+    registerOperation(new ImageOperation("Convert to HSV", this, imageTypeMenu,
                                          ImageOperation::Color, [this]() { this->convertToHSV(); }));
-    registerOperation(new ImageOperation("Convert to Lab", this, imageProcessingMenu,
+    registerOperation(new ImageOperation("Convert to Lab", this, imageTypeMenu,
                                          ImageOperation::Color, [this]() { this->convertToLab(); }));
-    // --- Histogram Menu --- (Keep separate for consistency)
-    QMenu *histogramMenu = new QMenu("Histogram Ops", this);
+    registerOperation(new ImageOperation("Split Color Channels", this, imageTypeMenu,
+                                         ImageOperation::Color, [this]() { this->splitColorChannels(); }));
+
+    // -- Point Operations Submenu --
+    QMenu *pointOpsMenu = processingMenu->addMenu("Point Operations");
+    registerOperation(new ImageOperation("Apply Negation", this, pointOpsMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyNegation(); }));
+    registerOperation(new ImageOperation("Range Stretching...", this, pointOpsMenu,
+                                         ImageOperation::Grayscale, [this]() { this->rangeStretching(); }));
+    registerOperation(new ImageOperation("Apply Posterization...", this, pointOpsMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyPosterization(); }));
+    registerOperation(new ImageOperation("Bitwise Operations...", this, pointOpsMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyBitwiseOperation(); }));
+    registerOperation(new ImageOperation("Show Line Profile", this, pointOpsMenu,
+                                         ImageOperation::Grayscale, [this]() { this->showLineProfile(); }));
+
+    // -- Thresholding Submenu --
+    QMenu *thresholdMenu = processingMenu->addMenu("Thresholding");
+    registerOperation(new ImageOperation("Make Binary", this, thresholdMenu,
+                                         ImageOperation::Grayscale, [this]() { this->binarise(); }));
+    registerOperation(new ImageOperation("Global Threshold...", this, thresholdMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyGlobalThreshold(); }));
+    registerOperation(new ImageOperation("Adaptive Threshold", this, thresholdMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyAdaptiveThreshold(); }));
+    registerOperation(new ImageOperation("Otsu Threshold", this, thresholdMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyOtsuThreshold(); }));
+
+    // -- Segmentation Submenu --
+    QMenu *segmentationMenu = processingMenu->addMenu("Segmentation");
+    registerOperation(new ImageOperation("Magic wand...", this, segmentationMenu,
+                                         ImageOperation::All, [this]() { this->applyMagicWandSegmentation(); }));
+    registerOperation(new ImageOperation("Grab cut...", this, segmentationMenu,
+                                         ImageOperation::All, [this]() { this->applyGrabCutSegmentation(); }));
+    registerOperation(new ImageOperation("Watershed Segmentation", this, segmentationMenu,
+                                         ImageOperation::All, [this]() { this->applyWatershedSegmentation(); }));
+    registerOperation(new ImageOperation("Inpaint Image...", this, segmentationMenu,
+                                         ImageOperation::All, [this]() { this->applyInpainting(); }));
+
+    // -- Histogram Operations Submenu --
+    QMenu *histogramMenu = processingMenu->addMenu("Histogram Operations");
     registerOperation(new ImageOperation("Stretch Histogram", this, histogramMenu,
                                          ImageOperation::Grayscale, [this]() { this->stretchHistogram(); }));
     registerOperation(new ImageOperation("Equalize Histogram", this, histogramMenu,
                                          ImageOperation::Grayscale, [this]() { this->equalizeHistogram(); }));
-    // --- Point Operations Menu ---
-    QMenu *pointOperationsMenu = new QMenu("Point", this);
-    registerOperation(new ImageOperation("Apply Negation", this, pointOperationsMenu,
-                                         ImageOperation::Grayscale,
-                                         [this]() { this->applyNegation(); }));
-    QMenu *thresholdMenu = pointOperationsMenu->addMenu("Threshold");
-    registerOperation(new ImageOperation("Global Threshold..", this, thresholdMenu,
-                                         ImageOperation::Grayscale,
-                                         [this]() { this->applyGlobalThreshold(); }));
-    registerOperation(new ImageOperation("Adaptive Threshold", this, thresholdMenu,
-                                         ImageOperation::Grayscale,
-                                         [this]() { this->applyAdaptiveThreshold(); }));
-    registerOperation(new ImageOperation("Otsu Threshold", this, thresholdMenu,
-                                         ImageOperation::Grayscale,
-                                         [this]() { this->applyOtsuThreshold(); }));
-    registerOperation(new ImageOperation("Magic wand...", this, thresholdMenu,
-                                         ImageOperation::All,
-                                         [this]() { this->applyMagicWandSegmentation(); }));
-    registerOperation(new ImageOperation("Grab cut...", this, pointOperationsMenu,
-                                         ImageOperation::All,
-                                         [this]() { this->applyGrabCutSegmentation(); }));
-    registerOperation(new ImageOperation("Watershed Segmentation", this, pointOperationsMenu,
-                                         ImageOperation::All,
-                                         [this]() { this->applyWatershedSegmentation(); }));
-    registerOperation(new ImageOperation("Inpaint Image...", this, pointOperationsMenu,
-                                         ImageOperation::Grayscale,
-                                         [this]() { this->applyInpainting(); }));
-    pointOperationsMenu->addSeparator();
-    registerOperation(new ImageOperation("Range Stretching...", this, pointOperationsMenu,
-                                         ImageOperation::Grayscale, [this]() { this->rangeStretching(); }));
-    registerOperation(new ImageOperation("Apply Posterization...", this, pointOperationsMenu,
-                                         ImageOperation::Grayscale, [this]() { this->applyPosterization(); }));
-    pointOperationsMenu->addSeparator();
-    registerOperation(new ImageOperation("Bitwise Operations...", this, pointOperationsMenu,
-                                         ImageOperation::Grayscale, // Bitwise usually on binary/gray
-                                         [this]() { this->applyBitwiseOperation(); }));
-    pointOperationsMenu->addSeparator();
-    registerOperation(new ImageOperation("Show Line Profile", this, pointOperationsMenu,
-                                         ImageOperation::Grayscale, // Line profile on grayscale
-                                         [this]() { this->showLineProfile(); }));
-    // --- Filters Menu ---
-    QMenu *filterMenu = new QMenu("Filters", this);
+
+    // -- Filters Submenu --
+    QMenu *filterMenu = processingMenu->addMenu("Filtering");
     registerOperation(new ImageOperation("Apply Blur (3x3)", this, filterMenu,
-                                         ImageOperation::All,
-                                         [this]() { this->applyBlur(); }));
+                                         ImageOperation::All, [this]() { this->applyBlur(); }));
     registerOperation(new ImageOperation("Apply Gaussian Blur (3x3)", this, filterMenu,
-                                         ImageOperation::All,
-                                         [this]() { this->applyGaussianBlur(); }));
-    filterMenu->addSeparator();
-    registerOperation(new ImageOperation("Sobel Edge Detection", this, filterMenu,
-                                         ImageOperation::Grayscale, [this]() { this->applySobelEdgeDetection(); }));
-    registerOperation(new ImageOperation("Laplacian Edge Detection", this, filterMenu,
-                                         ImageOperation::Grayscale, [this]() { this->applyLaplacianEdgeDetection(); }));
-    registerOperation(new ImageOperation("Canny Edge Detection", this, filterMenu,
-                                         ImageOperation::Grayscale, [this]() { this->applyCannyEdgeDetection(); }));
-    registerOperation(new ImageOperation("Prewitt Edge Detection...", this, filterMenu,
-                                         ImageOperation::Grayscale, [this]() { this->applyPrewittEdgeDetection(); }));
-    filterMenu->addSeparator();
-    QMenu *sharpenMenu = filterMenu->addMenu("Sharpening");
-    registerOperation(new ImageOperation("Basic Sharpening", this, sharpenMenu,
-                                         ImageOperation::All,
-                                         [this]() { this->applySharpening(1); }));
-    registerOperation(new ImageOperation("Strong Sharpening", this, sharpenMenu,
-                                         ImageOperation::All,
-                                         [this]() { this->applySharpening(2); }));
-    registerOperation(new ImageOperation("Edge Enhancement", this, sharpenMenu,
-                                         ImageOperation::All,
-                                         [this]() { this->applySharpening(3); }));
-    filterMenu->addSeparator();
+                                         ImageOperation::All, [this]() { this->applyGaussianBlur(); }));
     registerOperation(new ImageOperation("Apply Median Filter...", this, filterMenu,
-                                         ImageOperation::Grayscale, // Median typically on grayscale
-                                         [this]() { this->applyMedianFilter(); }));
+                                         ImageOperation::Grayscale, [this]() { this->applyMedianFilter(); }));
     filterMenu->addSeparator();
     registerOperation(new ImageOperation("Apply Custom Filter...", this, filterMenu,
-                                         ImageOperation::Grayscale, // Custom usually on grayscale
-                                         [this]() { this->applyCustomFilter(); }));
+                                         ImageOperation::Grayscale, [this]() { this->applyCustomFilter(); }));
     registerOperation(new ImageOperation("Two-Step Filter (5x5)...", this, filterMenu,
-                                         ImageOperation::Grayscale, // Two-step usually on grayscale
-                                         [this]() { this->applyTwoStepFilter(); }));
-    filterMenu->addSeparator();
-    registerOperation(new ImageOperation("Detect Lines (Hough)...", this, filterMenu,
-                                         ImageOperation::All, // Hough requires binary
-                                         [this]() { this->applyHoughLineDetection(); }));
-    // --- Morphology Menu ---
-    QMenu *morphologyMenu = new QMenu("Morphology", this);
+                                         ImageOperation::Grayscale, [this]() { this->applyTwoStepFilter(); }));
+
+    // -- Edge Detection Submenu --
+    QMenu *detectionMenu = processingMenu->addMenu("Edge Detection");
+    registerOperation(new ImageOperation("Sobel Edge Detection", this, detectionMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applySobelEdgeDetection(); }));
+    registerOperation(new ImageOperation("Laplacian Edge Detection", this, detectionMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyLaplacianEdgeDetection(); }));
+    registerOperation(new ImageOperation("Canny Edge Detection", this, detectionMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyCannyEdgeDetection(); }));
+    registerOperation(new ImageOperation("Prewitt Edge Detection...", this, detectionMenu,
+                                         ImageOperation::Grayscale, [this]() { this->applyPrewittEdgeDetection(); }));
+    registerOperation(new ImageOperation("Detect Lines (Hough)...", this, detectionMenu,
+                                         ImageOperation::All, [this]() { this->applyHoughLineDetection(); }));
+
+    // -- Morphology Submenu --
+    QMenu *morphologyMenu = processingMenu->addMenu("Morphology");
+
     auto createElementSelector = [this](QMenu *parentMenu, StructuringElementType &targetVar, const QString& title) {
         QMenu *elementMenu = new QMenu(title, parentMenu);
         QWidget *widget = new QWidget(elementMenu);
         QVBoxLayout *layout = new QVBoxLayout(widget);
         layout->setContentsMargins(5, 5, 5, 5);
         layout->setSpacing(5);
+
         QRadioButton *diamondRadio = new QRadioButton("Diamond (4-conn)", widget);
         QRadioButton *squareRadio = new QRadioButton("Square (8-conn)", widget);
         if (targetVar == Diamond) diamondRadio->setChecked(true);
         else squareRadio->setChecked(true);
+
         layout->addWidget(diamondRadio);
         layout->addWidget(squareRadio);
-        // Use lambda capture to ensure the correct targetVar is modified
-        connect(diamondRadio, &QRadioButton::toggled, this, [&targetVar, this](bool checked) {
+
+        connect(diamondRadio, &QRadioButton::toggled, this, [&targetVar](bool checked) {
             if (checked) targetVar = Diamond;
         });
-        connect(squareRadio, &QRadioButton::toggled, this, [&targetVar, this](bool checked) {
+        connect(squareRadio, &QRadioButton::toggled, this, [&targetVar](bool checked) {
             if (checked) targetVar = Square;
         });
+
         QWidgetAction *widgetAction = new QWidgetAction(elementMenu);
         widgetAction->setDefaultWidget(widget);
         elementMenu->addAction(widgetAction);
         return elementMenu;
     };
+
     QMenu *erosionMenu = morphologyMenu->addMenu("Erosion");
     erosionMenu->addMenu(createElementSelector(erosionMenu, erosionElement, "Structuring Element"));
     registerOperation(new ImageOperation("Apply Erosion", this, erosionMenu,
-                                         ImageOperation::Binary,
-                                         [this]() { this->applyErosion(this->erosionElement); }));
-    // Explicitly capture this if necessary, or ensure member access works
+                                         ImageOperation::Binary, [this]() { this->applyErosion(this->erosionElement); }));
+
     QMenu *dilationMenu = morphologyMenu->addMenu("Dilation");
     dilationMenu->addMenu(createElementSelector(dilationMenu, dilationElement, "Structuring Element"));
     registerOperation(new ImageOperation("Apply Dilation", this, dilationMenu,
-                                         ImageOperation::Binary,
-                                         [this]() { this->applyDilation(this->dilationElement); }));
+                                         ImageOperation::Binary, [this]() { this->applyDilation(this->dilationElement); }));
+
     QMenu *openingMenu = morphologyMenu->addMenu("Opening");
     openingMenu->addMenu(createElementSelector(openingMenu, openingElement, "Structuring Element"));
     registerOperation(new ImageOperation("Apply Opening", this, openingMenu,
-                                         ImageOperation::Binary,
-                                         [this]() { this->applyOpening(this->openingElement); }));
+                                         ImageOperation::Binary, [this]() { this->applyOpening(this->openingElement); }));
+
     QMenu *closingMenu = morphologyMenu->addMenu("Closing");
     closingMenu->addMenu(createElementSelector(closingMenu, closingElement, "Structuring Element"));
     registerOperation(new ImageOperation("Apply Closing", this, closingMenu,
-                                         ImageOperation::Binary,
-                                         [this]() { this->applyClosing(this->closingElement); }));
+                                         ImageOperation::Binary, [this]() { this->applyClosing(this->closingElement); }));
+
     morphologyMenu->addSeparator();
     registerOperation(new ImageOperation("Skeletonize", this, morphologyMenu,
-                                         ImageOperation::Binary,
-                                         [this]() { this->applySkeletonization(); }));
-    // --- Add Menus to Bar ---
+                                         ImageOperation::Binary, [this]() { this->applySkeletonization(); }));
+
+    // --- Add Top-Level Menus to MenuBar ---
     menuBar->addMenu(fileMenu);
+    menuBar->addMenu(editMenu);
     menuBar->addMenu(viewMenu);
-    menuBar->addMenu(imageProcessingMenu);
-    menuBar->addMenu(pointOperationsMenu);
-    menuBar->addMenu(histogramMenu);
-    menuBar->addMenu(filterMenu);
-    menuBar->addMenu(morphologyMenu);
-    // Set the menu bar for the main layout (already done if passed to QVBoxLayout)
+    menuBar->addMenu(processingMenu);
+
     mainLayout->setMenuBar(menuBar);
 
     updateOperationsEnabledState();
-    // Initial state update
 }
+
 
 // Registers an operation for automatic state updates (enabled/disabled).
 void ImageViewer::registerOperation(ImageOperation *op) {
@@ -438,7 +428,26 @@ void ImageViewer::updateImage() {
         currentScale = *closest;
     }
 
-    cv::Mat displayImage = originalImage.clone();
+    cv::Mat displayImage;
+    if (showingMaskMode && !drawnMask.empty() && drawnMask.size() == originalImage.size()) {
+        cv::Mat display;
+
+        if (originalImage.channels() == 4) {
+            cv::cvtColor(originalImage, display, cv::COLOR_BGRA2BGR);
+        } else if (originalImage.channels() == 1) {
+            cv::cvtColor(originalImage, display, cv::COLOR_GRAY2BGR);
+        } else {
+            display = originalImage.clone();
+        }
+
+        cv::Mat maskColored;
+        cv::cvtColor(drawnMask, maskColored, cv::COLOR_GRAY2BGR);
+        cv::addWeighted(display, 1.0, maskColored, 0.5, 0, display);
+        displayImage = display;
+    } else {
+        displayImage = originalImage.clone();
+    }
+
     if (usePyramidScaling) {
         if (currentScale == 0.5) {
             cv::pyrDown(displayImage, displayImage);
@@ -452,9 +461,7 @@ void ImageViewer::updateImage() {
             cv::pyrUp(displayImage, displayImage);
         }
     }
-    if(showingMaskMode)
-        if(drawnMask.size == displayImage.size)
-            displayImage |= drawnMask;
+
 
     QImage qimg = MatToQImage(displayImage);
     if (qimg.isNull()) {
@@ -746,6 +753,22 @@ void ImageViewer::mouseMoveEvent(QMouseEvent* event) {
 }
 
 
+bool ImageViewer::eventFilter(QObject *watched, QEvent *event) {
+    if (event->type() == QEvent::ToolTip) {
+        QHelpEvent *helpEvent = static_cast<QHelpEvent *>(event);
+        QMenu *menu = qobject_cast<QMenu *>(watched);
+        if (menu) {
+            QAction *action = menu->actionAt(helpEvent->pos());
+            if (action && !action->toolTip().isEmpty()) {
+                QToolTip::showText(helpEvent->globalPos(), action->toolTip());
+                return true;
+            }
+        }
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
+
 void ImageViewer::drawOnMask(const QPoint& widgetPos) {
     // Guard clauses
     if (!drawingMaskMode || originalImage.empty() || drawnMask.empty() || widgetPos.isNull() || !imageLabel) return;
@@ -780,11 +803,10 @@ void ImageViewer::drawOnMask(const QPoint& widgetPos) {
         cv::circle(drawnMask, current, currentBrushThickness / 2, cv::Scalar(255), /*thickness*/ -1, cv::LINE_8);
     }
 
-    // Update the visual display (shows image + blended overlay)
-    showTempImage(drawnMask | originalImage);
-
     // Update last position *after* drawing for the next segment
     lastDrawPos = widgetPos;
+
+    updateImage();
 }
 
 void ImageViewer::setBrushThickness(int thickness) {
@@ -1049,6 +1071,39 @@ void ImageViewer::duplicateImage() {
                                              newPos, mainWindow);
     newViewer->setZoom(currentScale); // Apply current zoom to duplicate
     newViewer->show();
+    newViewer->undoStack = std::stack<cv::Mat>(undoStack);
+    newViewer->redoStack = std::stack<cv::Mat>(redoStack);
+    newViewer->setBrushThickness(currentBrushThickness);
+    newViewer->setUsePyramidScaling(usePyramidScaling);
+    newViewer->drawnMask = drawnMask;
+    newViewer->lastDrawPos = lastDrawPos;
+    newViewer->updateImage();
+}
+
+void ImageViewer::drawMask() {
+    InpaintingDialog* inpaintDialog = new InpaintingDialog(this, mainWindow->openedImages, mainWindow);
+    inpaintDialog->setAttribute(Qt::WA_DeleteOnClose);
+    enableMaskShowing();
+    inpaintDialog->show();
+
+    connect(inpaintDialog, &InpaintingDialog::maskChanged, this, [=]() {
+        drawnMask = inpaintDialog->getSelectedMask();
+        updateImage();
+    });
+
+    connect(inpaintDialog, &QDialog::accepted, this, [=]() {
+        disableMaskDrawing();
+        disableMaskShowing();
+        clearMask();
+        updateImage();
+    });
+
+    connect(inpaintDialog, &QDialog::rejected, this, [=]() {
+        disableMaskDrawing();
+        disableMaskShowing();
+        clearMask();
+        updateImage();
+    });
 }
 
 // Opens a file dialog to save the current image.
@@ -1486,22 +1541,19 @@ void ImageViewer::applyInpainting() {
         return;
     }
 
-    // --- Create and Configure the Inpainting Dialog ---
-    // Pass 'this' ImageViewer as the parent context for drawing,
-    // the list of other viewers, and the mainWindow for creating new windows.
     InpaintingDialog* inpaintDialog = new InpaintingDialog(this, mainWindow->openedImages, mainWindow);
-    inpaintDialog->setAttribute(Qt::WA_DeleteOnClose); // Ensure dialog is deleted when closed
+    inpaintDialog->setAttribute(Qt::WA_DeleteOnClose);
     enableMaskShowing();
-    // --- Execute Dialog Modally ---
-    // Dialog manages enabling/disabling mask drawing mode internally now.
     inpaintDialog->show();
+
     connect(inpaintDialog, &InpaintingDialog::maskChanged, this, [=]() {
         drawnMask = inpaintDialog->getSelectedMask();
         updateImage();
     });
     connect(inpaintDialog, &QDialog::accepted, this, [=]() {
-        cv::Mat mask = inpaintDialog->getSelectedMask(); // Use the dialog's getter
+        cv::Mat mask = inpaintDialog->getSelectedMask();
         updateImage();
+
         if (mask.empty()) {
             QMessageBox::warning(this, "Inpainting Error", "No valid mask was provided or selected.");
             disableMaskShowing();
@@ -1512,18 +1564,17 @@ void ImageViewer::applyInpainting() {
             disableMaskShowing();
             return;
         }
-        // Ensure mask is CV_8UC1 (should be handled by getSelectedMask, but double-check)
         if (mask.type() != CV_8UC1) {
             QMessageBox::warning(this, "Inpainting Error", "Mask format is invalid (must be 8-bit single channel).");
             disableMaskShowing();
             return;
         }
-        // --- Get Inpainting Parameters (Radius, Method) via separate dialog ---
-        InputDialog inputDialog(this); // Assuming InputDialog class exists
+
+        InputDialog inputDialog(this);
         inputDialog.setWindowTitle("Inpainting Parameters");
 
-        auto* radiusSpin = new QDoubleSpinBox(&inputDialog); // Parent dialog for auto-deletion
-        radiusSpin->setRange(1.0, 200.0); // Example range
+        auto* radiusSpin = new QDoubleSpinBox(&inputDialog);
+        radiusSpin->setRange(1.0, 200.0);
         radiusSpin->setValue(5.0);
         radiusSpin->setSingleStep(1.0);
         radiusSpin->setSuffix(" px");
@@ -1531,14 +1582,20 @@ void ImageViewer::applyInpainting() {
         auto* methodCombo = new QComboBox(&inputDialog);
         methodCombo->addItems({"Telea", "Navier-Stokes"});
 
-        inputDialog.addInput("Inpaint Radius:", radiusSpin); // Use addInput method of your InputDialog
+        inputDialog.addInput("Inpaint Radius:", radiusSpin);
         inputDialog.addInput("Inpaint Method:", methodCombo);
         setupPreview(&inputDialog, inputDialog.getPreviewCheckBox(), [&]() {
-            // Get parameters from InputDialog
             int methodFlag = (methodCombo->currentText() == "Telea") ? cv::INPAINT_TELEA : cv::INPAINT_NS;
             double radius = radiusSpin->value();
 
-            return ImageProcessing::applyInpainting(originalImage, mask, radius, methodFlag);
+            cv::Mat imageToInpaint;
+            if (originalImage.channels() == 4) {
+                cv::cvtColor(originalImage, imageToInpaint, cv::COLOR_BGRA2BGR);
+            } else {
+                imageToInpaint = originalImage.clone();
+            }
+
+            return ImageProcessing::applyInpainting(imageToInpaint, mask, radius, methodFlag);
         });
 
         inputDialog.exec();

@@ -74,7 +74,7 @@ InpaintingDialog::InpaintingDialog(ImageViewer *parent, const QVector<QWidget*>&
     connect(cancelButton, &QPushButton::clicked, this, &InpaintingDialog::handleRejected);
 
     // --- Initial State ---
-    setWindowTitle("Inpainting Options");
+    setWindowTitle("Mask drawing");
     setMinimumSize(400, 350); // Adjusted minimum size
     updateUi(); // Set initial visibility and enable/disable drawing mode
 
@@ -173,9 +173,9 @@ void InpaintingDialog::setupUi() {
     // 4. Action Buttons (using manual layout)
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     buttonLayout->addStretch(); // Pushes buttons to the right
-    processButton = new QPushButton("Apply Inpaint", this); // Renamed for clarity
+    processButton = new QPushButton("Finish", this); // Renamed for clarity
     cancelButton = new QPushButton("Cancel", this);
-    processButton->setDefault(true); // Make "Apply" the default button (Enter key)
+    processButton->setDefault(true); // Make "Finish" the default button (Enter key)
     buttonLayout->addWidget(processButton);
     buttonLayout->addWidget(cancelButton);
     mainLayout->addLayout(buttonLayout);
@@ -204,7 +204,7 @@ void InpaintingDialog::updateUi() {
         }
     }
     // Update process button text based on mode? (Optional cosmetic change)
-    processButton->setText(drawMode ? "Apply Inpaint" : "Use Image as Mask and Inpaint");
+    processButton->setText(drawMode ? "Finish" : "Load mask");
 }
 
 // ======================================================================
@@ -283,10 +283,8 @@ void InpaintingDialog::openMaskInNewViewer() {
  */
 cv::Mat InpaintingDialog::getSelectedMask() const {
     if (maskSourceCombo->currentText() == "Draw on image") {
-        // Return the mask drawn directly on the parent viewer
-        return !drawnMask.empty() ? drawnMask : parentViewer->getDrawnMask(); // Getter returns clone
+        return !drawnMask.empty() ? drawnMask : parentViewer->getDrawnMask();
     } else {
-        // Get mask from the selected image in the list
         QListWidgetItem* selectedItem = imageList->currentItem();
         if (!selectedItem) {
             QMessageBox::warning(nullptr, "Mask Selection Error", "No image selected from the list to use as a mask.");
@@ -299,34 +297,27 @@ cv::Mat InpaintingDialog::getSelectedMask() const {
             return cv::Mat();
         }
 
-        cv::Mat sourceMask = selectedViewer->getOriginalImage(); // Get the image from the selected viewer
+        cv::Mat sourceMask = selectedViewer->getOriginalImage();
         if (sourceMask.empty()) {
             QMessageBox::warning(nullptr, "Mask Selection Error", "The selected image is empty.");
             return cv::Mat();
         }
 
-        // --- Prepare the mask: Ensure it's 8-bit single channel and binary ---
         cv::Mat preparedMask;
-        // Convert to grayscale if necessary
         if (sourceMask.channels() == 3) {
             cv::cvtColor(sourceMask, preparedMask, cv::COLOR_BGR2GRAY);
         } else if (sourceMask.channels() == 4) {
             cv::cvtColor(sourceMask, preparedMask, cv::COLOR_BGRA2GRAY);
         } else {
-            preparedMask = sourceMask.clone(); // Assume already grayscale or single channel
+            preparedMask = sourceMask.clone();
         }
 
-        // Convert depth to 8U if necessary (e.g., from 16U)
         if (preparedMask.depth() != CV_8U) {
-            // Scale appropriately. Example for 16U:
             preparedMask.convertTo(preparedMask, CV_8U, 255.0 / 65535.0);
         }
 
-        // Threshold to ensure binary mask (non-zero becomes 255)
-        // Use a threshold slightly above 0 to handle potential noise
         cv::threshold(preparedMask, preparedMask, 1, 255, cv::THRESH_BINARY);
 
-        // Final check
         if (preparedMask.empty() || preparedMask.type() != CV_8UC1) {
             QMessageBox::critical(nullptr, "Mask Preparation Error", "Failed to prepare the selected image as a valid mask (must be convertible to 8-bit single channel).");
             return cv::Mat();
@@ -345,6 +336,13 @@ cv::Mat InpaintingDialog::getSelectedMask() const {
  */
 void InpaintingDialog::handleAccepted() {
     // Ensure drawing mode is turned off in the parent viewer before closing
+    bool drawMode = (maskSourceCombo->currentText() == "Draw on image");
+    if (!drawMode) {
+        drawnMask = getSelectedMask();
+        maskSourceCombo->setCurrentIndex(0);
+        return;
+    }
+
     if (parentViewer) {
         parentViewer->disableMaskDrawing();
     }
