@@ -210,6 +210,8 @@ void ImageViewer::createMenu() {
     QMenu *imageTypeMenu = processingMenu->addMenu("Image Type");
     registerOperation(new ImageOperation("Convert to Grayscale", this, imageTypeMenu,
                                          ImageOperation::Color, [this]() { this->convertToGrayscale(); }));
+    registerOperation(new ImageOperation("Remove alpha channel", this, imageTypeMenu,
+                                         ImageOperation::RGBA, [this]() { this->removeAlphaChannel(); }));
     registerOperation(new ImageOperation("Convert to HSV", this, imageTypeMenu,
                                          ImageOperation::Color, [this]() { this->convertToHSV(); }));
     registerOperation(new ImageOperation("Convert to Lab", this, imageTypeMenu,
@@ -341,6 +343,10 @@ void ImageViewer::createMenu() {
     registerOperation(new ImageOperation("Skeletonize", this, morphologyMenu,
                                          ImageOperation::Binary, [this]() { this->applySkeletonization(); }));
 
+    QMenu *analysisMenu = processingMenu->addMenu("Analysis");
+    registerOperation(new ImageOperation("Analyze Shape Features", this, analysisMenu,
+                                         ImageOperation::Binary, [this]() { this->analyzeShapeFeatures(); }));
+
     // --- Add Top-Level Menus to MenuBar ---
     menuBar->addMenu(fileMenu);
     menuBar->addMenu(editMenu);
@@ -364,6 +370,36 @@ void ImageViewer::updateOperationsEnabledState() {
     ImageType type = ImageType::None;
 
     if (!originalImage.empty()) {
+        // Step 1: Handle 4-channel images (e.g., RGBA)
+        if (originalImage.channels() == 4) {
+            std::vector<cv::Mat> channels(4);
+            cv::split(originalImage, channels);
+
+            // Check if the alpha channel is all zeros
+            if (cv::countNonZero(channels[3]) == 0) {
+                // Discard the alpha channel
+                cv::merge(std::vector<cv::Mat>{channels[0], channels[1], channels[2]}, originalImage);
+            }
+        }
+
+        // Step 2: Check if it's a grayscale image (all channels are equal)
+        if (originalImage.channels() == 3) {
+            std::vector<cv::Mat> channels(3);
+            cv::split(originalImage, channels);
+
+            // Check if all three channels are exactly the same
+            cv::Mat cmp1, cmp2;
+            cv::compare(channels[0], channels[1], cmp1, cv::CMP_NE); // Non-equal comparison
+            cv::compare(channels[0], channels[2], cmp2, cv::CMP_NE);
+
+            if (cv::countNonZero(cmp1) == 0 && cv::countNonZero(cmp2) == 0) {
+                // All channels are the same, convert to single-channel grayscale
+                originalImage = channels[0];
+            }
+        }
+
+
+        // Step 3: Classify the image
         if (originalImage.channels() == 1) {
             // Check if binary or grayscale
             cv::Mat diff1 = (originalImage != 0);
@@ -374,10 +410,15 @@ void ImageViewer::updateOperationsEnabledState() {
             } else {
                 type = ImageType::Grayscale;
             }
-        } else if (originalImage.channels() == 3 || originalImage.channels() == 4) {
+        } else if (originalImage.channels() == 3) {
             type = ImageType::Color;
+        } else if (originalImage.channels() == 4) {
+            type = ImageType::RGBA;
+        } else {
+            type = ImageType::None;
         }
     }
+
 
     // Update registered operations
     for (ImageOperation* op : operationsList) {
@@ -385,7 +426,7 @@ void ImageViewer::updateOperationsEnabledState() {
     }
 
     // Update specific actions like histogram and LUT
-    bool histogramEnabled = (type == ImageType::Grayscale || type == ImageType::Binary);
+    bool histogramEnabled = (type & ImageType::Grayscale);
     if (showHistogramAction) { // Use the new action name
         showHistogramAction->setEnabled(histogramEnabled);
         // The button remains enabled even if the window is open; clicking it will raise the window.
@@ -399,7 +440,7 @@ void ImageViewer::updateOperationsEnabledState() {
         }
     }
     if(lutAction) {
-        lutAction->setEnabled(type == ImageType::Grayscale || type == ImageType::Binary);
+        lutAction->setEnabled(type & ImageType::Grayscale);
     }
 }
 
@@ -1106,32 +1147,152 @@ void ImageViewer::drawMask() {
     });
 }
 
+
+std::vector<std::pair<uchar, int>> compressRLE(const cv::Mat& image) {
+    std::vector<std::pair<uchar, int>> rleData;
+
+    for (int i = 0; i < image.rows; ++i) {
+        const uchar* row = image.ptr<uchar>(i);
+        int count = 1;
+        uchar prev = row[0];
+
+        for (int j = 1; j < image.cols; ++j) {
+            if (row[j] == prev) {
+                ++count;
+            } else {
+                rleData.emplace_back(prev, count);
+                prev = row[j];
+                count = 1;
+            }
+        }
+        rleData.emplace_back(prev, count);
+    }
+
+    return rleData;
+}
+
+std::vector<std::pair<cv::Vec3b, int>> compressColorRLE(const cv::Mat& image) {
+    std::vector<std::pair<cv::Vec3b, int>> rleData;
+
+    for (int i = 0; i < image.rows; ++i) {
+        const cv::Vec3b* row = image.ptr<cv::Vec3b>(i);
+        cv::Vec3b prev = row[0];
+        int count = 1;
+
+        for (int j = 1; j < image.cols; ++j) {
+            if (row[j] == prev) {
+                ++count;
+            } else {
+                rleData.emplace_back(prev, count);
+                prev = row[j];
+                count = 1;
+            }
+        }
+        rleData.emplace_back(prev, count);
+    }
+
+    return rleData;
+}
+
+bool saveRLEToFile(const std::vector<std::pair<uchar, int>>& rleData,
+                   const QString& filePath, int width, int height) {
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+
+    QTextStream out(&file);
+    out << "grayscale " << width << " " << height << "\n";
+    for (const auto& [val, count] : rleData) {
+        out << static_cast<int>(val) << " " << count << "\n";
+    }
+
+    return true;
+}
+
+
+bool saveColorRLEToFile(const std::vector<std::pair<cv::Vec3b, int>>& rleData,
+                        const QString& filePath, int width, int height) {
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+
+    QTextStream out(&file);
+    out << "color " << width << " " << height << "\n";
+    for (const auto& [val, count] : rleData) {
+        out << static_cast<int>(val[0]) << " "
+            << static_cast<int>(val[1]) << " "
+            << static_cast<int>(val[2]) << " "
+            << count << "\n";
+    }
+
+    return true;
+}
+
+
+double computeCompressionRatio(const cv::Mat& original, const std::vector<std::pair<uchar, int>>& rleData) {
+    int originalSize = original.rows * original.cols;
+    int compressedSize = rleData.size() * (sizeof(uchar) + sizeof(int));
+    return static_cast<double>(originalSize) / compressedSize;
+}
+
+double computeColorCompressionRatio(const cv::Mat& original, const std::vector<std::pair<cv::Vec3b, int>>& rleData) {
+    int originalSize = original.rows * original.cols * 3; // każdy piksel = 3 bajty
+    int compressedSize = rleData.size() * (3 * sizeof(uchar) + sizeof(int));
+    return static_cast<double>(originalSize) / compressedSize;
+}
+
 // Opens a file dialog to save the current image.
 void ImageViewer::saveImageAs() {
-    QString filePath = QFileDialog::getSaveFileName(this, "Save Image As", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif *.tiff)");
-    if (!filePath.isEmpty()) {
-        std::vector<int> compression_params;
-        if (filePath.endsWith(".jpg", Qt::CaseInsensitive) || filePath.endsWith(".jpeg", Qt::CaseInsensitive)) {
-            compression_params.push_back(cv::IMWRITE_JPEG_QUALITY);
-            compression_params.push_back(95);
-            // JPEG quality (0-100)
-        } else if (filePath.endsWith(".png", Qt::CaseInsensitive)) {
-            compression_params.push_back(cv::IMWRITE_PNG_COMPRESSION);
-            compression_params.push_back(3); // PNG compression level (0-9)
-        }
+    QString filePath = QFileDialog::getSaveFileName(this, "Save Image As", "",
+                                                    "Images (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.rle)");
+    if (filePath.isEmpty()) return;
+
 #ifdef _WIN32
-        std::string path = filePath.toLocal8Bit().constData();
-        // Safer conversion for Windows paths
+    std::string path = filePath.toLocal8Bit().constData();
 #else
-        std::string path = filePath.toUtf8().constData();
+    std::string path = filePath.toUtf8().constData();
 #endif
-        try {
-            if (!cv::imwrite(path, originalImage, compression_params)) {
-                QMessageBox::warning(this, "Save Error", "Failed to save the image. Check file path and permissions.");
+
+    std::vector<int> compression_params;
+
+    if (filePath.endsWith(".rle", Qt::CaseInsensitive)) {
+        if (originalImage.channels() == 1) {
+            auto rleData = compressRLE(originalImage);
+            double sk = computeCompressionRatio(originalImage, rleData);
+            if (!saveRLEToFile(rleData, filePath, originalImage.cols, originalImage.rows)) {
+                QMessageBox::critical(this, "Save Error", "Could not save grayscale RLE data to file.");
+            } else {
+                QMessageBox::information(this, "Compression Done",
+                                         QString("Grayscale image compressed.\nCompression ratio: %1").arg(sk, 0, 'f', 2));
             }
-        } catch (const cv::Exception& ex) {
-            QMessageBox::critical(this, "OpenCV Save Error", QString("Error saving image: %1").arg(ex.what()));
+        } else if (originalImage.channels() == 3) {
+            auto rleData = compressColorRLE(originalImage);
+            double sk = computeColorCompressionRatio(originalImage, rleData);
+            if (!saveColorRLEToFile(rleData, filePath, originalImage.cols, originalImage.rows)) {
+                QMessageBox::critical(this, "Save Error", "Could not save color RLE data to file.");
+            } else {
+                QMessageBox::information(this, "Compression Done",
+                                         QString("Color image compressed.\nCompression ratio: %1").arg(sk, 0, 'f', 2));
+            }
+        } else {
+            QMessageBox::warning(this, "Unsupported Format", "Only grayscale and 3-channel color images are supported for RLE.");
         }
+        return;
+    }
+
+    // Standard image formats
+    if (filePath.endsWith(".jpg", Qt::CaseInsensitive) || filePath.endsWith(".jpeg", Qt::CaseInsensitive)) {
+        compression_params.push_back(cv::IMWRITE_JPEG_QUALITY);
+        compression_params.push_back(95);
+    } else if (filePath.endsWith(".png", Qt::CaseInsensitive)) {
+        compression_params.push_back(cv::IMWRITE_PNG_COMPRESSION);
+        compression_params.push_back(3);
+    }
+
+    try {
+        if (!cv::imwrite(path, originalImage, compression_params)) {
+            QMessageBox::warning(this, "Save Error", "Failed to save the image. Check file path and permissions.");
+        }
+    } catch (const cv::Exception& ex) {
+        QMessageBox::critical(this, "OpenCV Save Error", QString("Error saving image: %1").arg(ex.what()));
     }
 }
 
@@ -1143,6 +1304,13 @@ void ImageViewer::saveImageAs() {
 void ImageViewer::convertToGrayscale() {
     pushToUndoStack();
     originalImage = ImageProcessing::convertToGrayscale(originalImage);
+    updateImage();
+}
+
+
+void ImageViewer::removeAlphaChannel() {
+    pushToUndoStack();
+    originalImage = ImageProcessing::removeAlphaChannel(originalImage);
     updateImage();
 }
 
@@ -1800,6 +1968,80 @@ void ImageViewer::applySkeletonization() {
     updateImage();
 }
 
+// ======================================================================
+// `Image Analysis Slot`
+// ======================================================================
+void ImageViewer::analyzeShapeFeatures() {
+    if (originalImage.channels() != 1) {
+        QMessageBox::warning(this, "Shape Analysis", "Image must be binary (1-channel).");
+        return;
+    }
+
+    auto featuresList = ImageProcessing::computeShapeFeatures(originalImage);
+
+    if (featuresList.empty()) {
+        QMessageBox::information(this, "Shape Analysis", "No objects found.");
+        return;
+    }
+
+    QDialog *dialog = new QDialog(this);
+    dialog->setWindowTitle("Shape Features");
+    dialog->resize(800, 500);
+
+    QVBoxLayout *layout = new QVBoxLayout(dialog);
+    QTableWidget *table = new QTableWidget(dialog);
+
+    QStringList headers = {
+        "Object #", "Area", "Perimeter", "Aspect Ratio",
+        "Extent", "Solidity", "Equivalent Diameter"
+    };
+
+    table->setColumnCount(headers.size());
+    table->setRowCount(static_cast<int>(featuresList.size()));
+    table->setHorizontalHeaderLabels(headers);
+    table->horizontalHeader()->setStretchLastSection(true);
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table->setAlternatingRowColors(true);
+    table->setSortingEnabled(true);
+
+    for (int i = 0; i < featuresList.size(); ++i) {
+        const auto& f = featuresList[i];
+
+        class MyTableWidgetItem : public QTableWidgetItem {
+        public:
+            bool operator <(const QTableWidgetItem &other) const
+            {
+                return text().toDouble() < other.text().toDouble();
+            }
+        };
+
+        auto makeItem = [](double val) {
+            auto *item = new MyTableWidgetItem;
+            item->setData(Qt::DisplayRole, static_cast<double>(val)); // Force double
+            return item;
+        };
+
+
+        table->setItem(i, 0, makeItem(i + 1)); // index as string is fine
+        table->setItem(i, 1, makeItem(f.area));
+        table->setItem(i, 2, makeItem(f.perimeter));
+        table->setItem(i, 3, makeItem(f.aspectRatio));
+        table->setItem(i, 4, makeItem(f.extent));
+        table->setItem(i, 5, makeItem(f.solidity));
+        table->setItem(i, 6, makeItem(f.equivalentDiameter));
+    }
+
+
+    table->resizeColumnsToContents();
+
+    QPushButton *closeButton = new QPushButton("Close", dialog);
+    connect(closeButton, &QPushButton::clicked, dialog, &QDialog::accept);
+
+    layout->addWidget(table);
+    layout->addWidget(closeButton);
+    dialog->show();
+}
 
 // ======================================================================
 // `Helper Functions`

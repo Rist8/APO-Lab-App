@@ -37,6 +37,20 @@ cv::Mat convertToGrayscale(const cv::Mat& inputImage) {
     return outputImage;
 }
 
+cv::Mat removeAlphaChannel(const cv::Mat& inputImage) {
+    cv::Mat outputImage;
+    if (inputImage.empty()) {
+        QMessageBox::warning(nullptr, "Remove alpha channel Error", "Input image is empty.");
+        return outputImage;
+    }
+    if (inputImage.channels() == 4) {
+        cv::cvtColor(inputImage, outputImage, cv::COLOR_BGRA2BGR);
+    } else {
+        outputImage = inputImage.clone();
+    }
+    return outputImage;
+}
+
 cv::Mat convertToColor(const cv::Mat &input) {
     if (input.empty()) {
         QMessageBox::warning(nullptr, "Convert To Color Error", "Input image is empty.");
@@ -960,6 +974,36 @@ cv::Mat applyInpainting(const cv::Mat& inputImage, const cv::Mat& mask, double r
     cv::Mat result;
     cv::inpaint(inputImage, mask, result, radius, method);
     return result;
+}
+
+std::vector<ShapeFeatures> computeShapeFeatures(const cv::Mat& binaryImage) {
+    std::vector<std::vector<cv::Point>> contours;
+    std::vector<ShapeFeatures> featuresList;
+
+    cv::findContours(binaryImage.clone(), contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+    for (const auto& contour : contours) {
+        ShapeFeatures features;
+
+        features.moments = cv::moments(contour);
+        features.area = cv::contourArea(contour);
+        features.perimeter = cv::arcLength(contour, true);
+
+        cv::Rect boundingBox = cv::boundingRect(contour);
+        features.aspectRatio = static_cast<double>(boundingBox.width) / boundingBox.height;
+        features.extent = features.area / (boundingBox.width * boundingBox.height);
+
+        std::vector<cv::Point> hull;
+        cv::convexHull(contour, hull);
+        double hullArea = cv::contourArea(hull);
+        features.solidity = features.area / hullArea;
+
+        features.equivalentDiameter = std::sqrt(4 * features.area / CV_PI);
+
+        featuresList.push_back(features);
+    }
+
+    return featuresList;
 }
 
 } // namespace ImageProcessing

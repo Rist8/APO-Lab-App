@@ -134,6 +134,7 @@ private slots:
     // `Image Type Conversion Slots`
     // ======================================================================
     void convertToGrayscale();
+    void removeAlphaChannel();
     void binarise();
     void splitColorChannels();
     void convertToHSV(); // Splits into HSV and Lab viewers
@@ -186,6 +187,11 @@ private slots:
     void applyOpening(StructuringElementType type);
     void applyClosing(StructuringElementType type);
     void applySkeletonization();
+
+    // ======================================================================
+    // `Image Analysis Slot`
+    // ======================================================================
+    void analyzeShapeFeatures();
 
 
 private:

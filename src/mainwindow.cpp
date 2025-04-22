@@ -4,10 +4,10 @@
 #include <QActionGroup>
 
 // ==========================================================================
-// Group 1: Application Core & Main Window
+// Application Core & Main Window
 // ==========================================================================
+
 // Constructor: Sets up the main window menu bar (File, Info, Options).
-// ==========================================================================
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     QMenu *fileMenu = menuBar()->addMenu("File");
     QAction *openAction = new QAction("Open", this);
@@ -64,28 +64,17 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     optionsMenu->addAction(pyramidScalingToggle);
 }
 
-// ==========================================================================
-// Group 1: Application Core & Main Window
-// ==========================================================================
 // Returns the currently selected border handling option for OpenCV functions.
-// ==========================================================================
 int MainWindow::getBorderOption() {
     return borderOption;
 }
 
-// ==========================================================================
-// Group 1: Application Core & Main Window
-// ==========================================================================
 // Returns the current state of pyramid scaling toggle.
-// ==========================================================================
 bool MainWindow::isPyramidScalingEnabled() const {
     return usePyramidScaling;
 }
-// ==========================================================================
-// Group 1: Application Core & Main Window
-// ==========================================================================
+
 // Sets the border handling option and updates menu checks.
-// ==========================================================================
 void MainWindow::setBorderOption(int option, QAction *selectedAction) {
     borderOption = option;
     borderIsolated->setChecked(false);
@@ -94,14 +83,85 @@ void MainWindow::setBorderOption(int option, QAction *selectedAction) {
     selectedAction->setChecked(true);
 }
 
-// ==========================================================================
-// Group 1: Application Core & Main Window
-// ==========================================================================
+cv::Mat decompressRLE(const std::vector<std::pair<uchar, int>>& rleData, int width, int height) {
+    cv::Mat image(height, width, CV_8UC1);
+    uchar* data = image.ptr<uchar>(0);
+    int idx = 0;
+
+    for (const auto& [val, count] : rleData) {
+        std::fill(data + idx, data + idx + count, val);
+        idx += count;
+    }
+
+    return image;
+}
+
+
+cv::Mat decompressColorRLE(const std::vector<std::pair<cv::Vec3b, int>>& rleData, int width, int height) {
+    cv::Mat image(height, width, CV_8UC3);
+    cv::Vec3b* data = image.ptr<cv::Vec3b>(0);
+    int idx = 0;
+
+    for (const auto& [val, count] : rleData) {
+        std::fill(data + idx, data + idx + count, val);
+        idx += count;
+    }
+
+    return image;
+}
+
+cv::Mat loadRLEFile(const QString& filePath) {
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
+
+    QTextStream in(&file);
+    QString header = in.readLine();
+    QStringList headerParts = header.split(" ");
+    if (headerParts.size() != 3) return {};
+
+    QString type = headerParts[0];
+    int width = headerParts[1].toInt();
+    int height = headerParts[2].toInt();
+
+    if (type == "grayscale") {
+        std::vector<std::pair<uchar, int>> rleData;
+        while (!in.atEnd()) {
+            int val, count;
+            in >> val >> count;
+            rleData.emplace_back(static_cast<uchar>(val), count);
+        }
+        return decompressRLE(rleData, width, height);
+    } else if (type == "color") {
+        std::vector<std::pair<cv::Vec3b, int>> rleData;
+        while (!in.atEnd()) {
+            int b, g, r, count;
+            in >> b >> g >> r >> count;
+            rleData.emplace_back(cv::Vec3b(b, g, r), count);
+        }
+        return decompressColorRLE(rleData, width, height);
+    }
+
+    return {};
+}
+
+
 // Opens a file dialog to load an image and creates an ImageViewer for it.
-// ==========================================================================
 void MainWindow::openImage() {
-    QString filePath = QFileDialog::getOpenFileName(this, "Open Image", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif *.tiff)");
-    if (!filePath.isEmpty()) {
+    QString filePath = QFileDialog::getOpenFileName(
+        this, "Open Image", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.rle)");
+
+    if (filePath.isEmpty())
+        return;
+
+    cv::Mat image;
+
+    if (filePath.endsWith(".rle", Qt::CaseInsensitive)) {
+        image = loadRLEFile(filePath);  // <-- custom RLE loader
+        if (image.empty()) {
+            QMessageBox::critical(this, "Load Error", "Failed to load RLE image.");
+            return;
+        }
+    } else {
         QByteArray imageData;
         QFile file(filePath);
         if (file.open(QIODevice::ReadOnly)) {
@@ -110,24 +170,22 @@ void MainWindow::openImage() {
         }
 
         std::vector<uchar> buffer(imageData.begin(), imageData.end());
-        cv::Mat image = cv::imdecode(buffer, cv::IMREAD_UNCHANGED);
-        if (!image.empty()) {
-            ImageViewer *viewer = new ImageViewer(image, filePath, nullptr, QPoint(100,100), this);
-            viewer->show();
+        image = cv::imdecode(buffer, cv::IMREAD_UNCHANGED);
+
+        if (image.empty()) {
+            QMessageBox::critical(this, "Load Error", "Failed to decode image.");
+            return;
         }
     }
+
+    ImageViewer *viewer = new ImageViewer(image, filePath, nullptr, QPoint(100,100), this);
+    viewer->show();
 }
 
-// ==========================================================================
-// Group 1: Application Core & Main Window
-// ==========================================================================
+
 // Displays an 'About' message box.
-// ==========================================================================
 void MainWindow::showInfo() {
     QMessageBox::information(this, "About",
-                             "Aplikacja zbiorcza z ćwiczeń laboratoryjnych\n"
-                             "Autor: Mikhail Harbuz\n"
-                             "Prowadzący: dr inż. Łukasz Roszkowiak\n"
-                             "Algorytmy Przetwarzania Obrazów 2024\n"
-                             "WIT grupa ID: ID06IO1");
+                             "Application for APO subject in WIT academy\n"
+                             "Autor: Rist8\n");
 }

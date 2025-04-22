@@ -21,6 +21,7 @@ ImageOperation::ImageOperation(const QString &name,
     if (supportedTypes & ImageOperation::Grayscale) list << "Grayscale";
     if (supportedTypes & ImageOperation::Color)     list << "Color";
     if (supportedTypes & ImageOperation::Binary)    list << "Binary";
+    if (supportedTypes & ImageOperation::RGBA)    list << "RGBA";
 
     action = new QAction(name, this);
     action->setCheckable(checkable);
@@ -55,9 +56,10 @@ void ImageOperation::updateActionState(ImageType currentImageType) {
     if (allowedTypes & currentImageType) {
         isEnabled = true;
     }
-    // Special case: Allow operations supporting Grayscale to also work on Binary images
-    else if ((allowedTypes & Grayscale) && currentImageType == Binary) {
-        isEnabled = true;
+    if(currentImageType == ImageType::Color && allowedTypes == ImageType::RGBA){
+        isEnabled = false;
+    } else if(currentImageType == ImageType::Grayscale && allowedTypes == ImageType::Binary){
+        isEnabled = false;
     }
     action->setEnabled(isEnabled);
 }

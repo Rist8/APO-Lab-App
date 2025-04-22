@@ -7,6 +7,16 @@
 
 namespace ImageProcessing {
 
+struct ShapeFeatures {
+    cv::Moments moments;
+    double area;
+    double perimeter;
+    double aspectRatio;
+    double extent;
+    double solidity;
+    double equivalentDiameter;
+};
+
 // ==========================================================================
 // Group 5: Image Processing - Core Operations
 // ==========================================================================
@@ -26,6 +36,13 @@ cv::Mat binarise(const cv::Mat& inputImage, double thresholdValue = 127.0, doubl
      * @return The grayscale image, or the original if already grayscale/binary.
      */
 cv::Mat convertToGrayscale(const cv::Mat& inputImage);
+
+/**
+     * @brief Converts a color image with alpha to color image.
+     * @param inputImage The input BGRA image.
+     * @return The BGR, or the original if already BGR.
+     */
+cv::Mat removeAlphaChannel(const cv::Mat& inputImage);
 
 /**
      * @brief Converts a grayscale image to color.
@@ -393,6 +410,13 @@ cv::Mat applyWatershedSegmentation(const cv::Mat &inputImage);
      * @return An image with the Inpainting applied.
      */
 cv::Mat applyInpainting(const cv::Mat& inputImage, const cv::Mat& mask, double radius, int method);
+
+/**
+     * @brief Computes all shape features listed in ShapeFeatures structure.
+     * @param binaryImage The input binary image.
+     * @return A vector of all computed shape features.
+     */
+std::vector<ShapeFeatures> computeShapeFeatures(const cv::Mat& binaryImage);
 
 } // namespace ImageProcessing
 
