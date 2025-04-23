@@ -18,10 +18,18 @@ public:
     bool isPyramidScalingEnabled() const;
     QVector<QWidget*> openedImages;
 
+protected:
+    void closeEvent(QCloseEvent *event) override;
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
+
 private slots:
     void openImage();
+    void openImage(const QString& filePath);  // replaces previous void openImage()
     void showInfo(); // New slot for displaying info
     void setBorderOption(int option, QAction *selectedAction);
+    void mergeGrayscaleChannels();
+    void showBitwiseOperationDialog();
 
 private:
     bool usePyramidScaling = false;

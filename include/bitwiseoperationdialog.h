@@ -50,7 +50,8 @@ private:
     QVBoxLayout *mainLayout;
     QCheckBox* previewCheckBox;
     QComboBox *operationCombo;
-    QListWidget *imageList;
+    QComboBox *imageCombo1;
+    QComboBox *imageCombo2;
     QHBoxLayout *alphaLayout; // Layout containing alpha controls
     QLabel *alphaLabel;       // <-- Added declaration
     QSpinBox *alphaSpin;

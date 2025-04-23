@@ -42,8 +42,9 @@ ImageViewer::ImageViewer(const cv::Mat &image, const QString &title, QWidget *pa
     : QWidget(parent), originalImage(image.clone()), currentScale(1.0f), histogramWindow(nullptr), mainWindow(mainWindow) { // Initialize histogramWindow to nullptr
 
     if (!mainWindow) {
-        qCritical("ImageViewer created without a valid MainWindow pointer!");
-        // Decide how to handle this - maybe throw an exception or return early?
+        this->destroy(true, true);
+        return;
+        // Or close the widget and return
     } else {
         mainWindow->openedImages.push_back(this);
     }
@@ -606,9 +607,6 @@ void ImageViewer::updateHistogramTable() {
             histogramDataVec[row_ptr[x]]++;
         }
     }
-
-    // Update QTableWidget
-    LUT->setColumnCount(256);
     // Ensure correct column count
     for (int i = 0; i < 256; ++i) {
         QTableWidgetItem *item = LUT->item(0, i);
@@ -906,13 +904,7 @@ void ImageViewer::showHistogram() {
 
 // Slot called when the separate histogram window is closed/destroyed.
 void ImageViewer::onHistogramClosed() {
-    // The signal is emitted when the object is about to be destroyed,
-    // or already is.
-    // Just nullify the pointer.
     histogramWindow = nullptr;
-    // Update the button state (if needed, though current logic doesn't disable when open)
-    // updateOperationsEnabledState();
-    // Uncomment if button state depends on window existence
 }
 
 // Toggles the visibility of the embedded LUT (histogram table).
