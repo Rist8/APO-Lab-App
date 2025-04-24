@@ -270,6 +270,17 @@ void ImageViewer::createMenu() {
                                          ImageOperation::All, [this]() { this->applyGaussianBlur(); }));
     registerOperation(new ImageOperation("Apply Median Filter...", this, filterMenu,
                                          ImageOperation::Grayscale, [this]() { this->applyMedianFilter(); }));
+
+    QMenu *sharpenMenu = filterMenu->addMenu("Sharpening");
+    registerOperation(new ImageOperation("Basic Sharpening", this, sharpenMenu,
+                                         ImageOperation::All, [this]() { this->applySharpening(1); }));
+
+    registerOperation(new ImageOperation("Strong Sharpening", this, sharpenMenu,
+                                         ImageOperation::All, [this]() { this->applySharpening(2); }));
+
+    registerOperation(new ImageOperation("Edge Enhancement", this, sharpenMenu,
+                                         ImageOperation::All, [this]() { this->applySharpening(3); }));
+
     filterMenu->addSeparator();
     registerOperation(new ImageOperation("Apply Custom Filter...", this, filterMenu,
                                          ImageOperation::Grayscale, [this]() { this->applyCustomFilter(); }));
