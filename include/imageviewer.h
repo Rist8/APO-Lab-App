@@ -78,13 +78,14 @@ public:
     // ======================================================================
     template<typename Func>
     void setupPreview(PreviewDialogBase* dialog, QCheckBox* previewCheckBox, Func generator) {
-        connect(dialog, &QDialog::finished, this, [&]() {
-            if (dialog->result() == QDialog::Accepted) {
+        connect(dialog, &QDialog::finished, this, [=](int result) {
+            if (result == QDialog::Accepted) {
                 pushToUndoStack();
                 originalImage = generator();
             }
             updateImage();
         });
+
         connect(dialog, &PreviewDialogBase::previewRequested, this, [=]() {
             if (previewCheckBox->isChecked()) {
                 cv::Mat preview = generator();
