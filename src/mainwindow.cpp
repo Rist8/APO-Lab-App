@@ -102,10 +102,10 @@ void MainWindow::setBorderOption(int option, QAction *selectedAction) {
     selectedAction->setChecked(true);
 }
 
-cv::Mat decompressRLE(const std::vector<std::pair<uchar, int>>& rleData, int width, int height) {
+cv::Mat decompressRLE(const std::vector<std::pair<uchar, uchar>>& rleData, int width, int height) {
     cv::Mat image(height, width, CV_8UC1);
     uchar* data = image.ptr<uchar>(0);
-    int idx = 0;
+    uchar idx = 0;
 
     for (const auto& [val, count] : rleData) {
         std::fill(data + idx, data + idx + count, val);
@@ -116,10 +116,10 @@ cv::Mat decompressRLE(const std::vector<std::pair<uchar, int>>& rleData, int wid
 }
 
 
-cv::Mat decompressColorRLE(const std::vector<std::pair<cv::Vec3b, int>>& rleData, int width, int height) {
+cv::Mat decompressColorRLE(const std::vector<std::pair<cv::Vec3b, uchar>>& rleData, int width, int height) {
     cv::Mat image(height, width, CV_8UC3);
     cv::Vec3b* data = image.ptr<cv::Vec3b>(0);
-    int idx = 0;
+    uchar idx = 0;
 
     for (const auto& [val, count] : rleData) {
         std::fill(data + idx, data + idx + count, val);
@@ -131,37 +131,44 @@ cv::Mat decompressColorRLE(const std::vector<std::pair<cv::Vec3b, int>>& rleData
 
 cv::Mat loadRLEFile(const QString& filePath) {
     QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
+    if (!file.open(QIODevice::ReadOnly)) return {};
 
-    QTextStream in(&file);
-    QString header = in.readLine();
-    QStringList headerParts = header.split(" ");
-    if (headerParts.size() != 3) return {};
+    QDataStream in(&file);
+    in.setByteOrder(QDataStream::LittleEndian);
 
-    QString type = headerParts[0];
-    int width = headerParts[1].toInt();
-    int height = headerParts[2].toInt();
+    char type[3];
+    if (file.read(type, 3) != 3) return {};
 
-    if (type == "grayscale") {
-        std::vector<std::pair<uchar, int>> rleData;
-        while (!in.atEnd()) {
-            int val, count;
-            in >> val >> count;
-            rleData.emplace_back(static_cast<uchar>(val), count);
+    int width, height;
+    if (file.read(reinterpret_cast<char*>(&width), 4) != 4 ||
+        file.read(reinterpret_cast<char*>(&height), 4) != 4) return {};
+
+    QString format = QString::fromLatin1(type, 3);
+    if (format == "GRE") {
+        cv::Mat image(height, width, CV_8UC1);
+        uchar* data = image.ptr<uchar>(0);
+        int idx = 0;
+
+        while (!file.atEnd() && idx < width * height) {
+            uchar val, count;
+            if (file.read(reinterpret_cast<char*>(&val), 1) != 1 ||
+                file.read(reinterpret_cast<char*>(&count), 1) != 1) break;
+
+            std::fill(data + idx, data + idx + count, val);
+            idx += count;
         }
-        return decompressRLE(rleData, width, height);
-    } else if (type == "color") {
-        std::vector<std::pair<cv::Vec3b, int>> rleData;
-        while (!in.atEnd()) {
-            int b, g, r, count;
-            in >> b >> g >> r >> count;
-            rleData.emplace_back(cv::Vec3b(b, g, r), count);
-        }
-        return decompressColorRLE(rleData, width, height);
+
+        return image;
+    } else if (format == "COL") {
+        // Delegate to color loading function (as shown earlier)
+        // Or copy in the "COL" logic here
     }
 
     return {};
 }
+
+
+
 
 
 // Wrapper for menu action
@@ -319,6 +326,9 @@ void MainWindow::closeEvent(QCloseEvent *event) {
 // Displays an 'About' message box.
 void MainWindow::showInfo() {
     QMessageBox::information(this, "About",
-                             "Application for APO subject in WIT academy\n"
-                             "Autor: Rist8\n");
+                             "Aplikacja zbiorcza z ćwiczeń laboratoryjnych\n"
+                             "Autor: Mikhail Harbuz\n"
+                             "Prowadzący: dr inż. Łukasz Roszkowiak\n"
+                             "Algorytmy Przetwarzania Obrazów 2024\n"
+                             "WIT grupa ID: ID06IO1");
 }

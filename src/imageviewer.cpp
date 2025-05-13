@@ -1151,94 +1151,111 @@ void ImageViewer::drawMask() {
 }
 
 
-std::vector<std::pair<uchar, int>> compressRLE(const cv::Mat& image) {
-    std::vector<std::pair<uchar, int>> rleData;
+std::vector<std::pair<uchar, uchar>> compressRLE(const cv::Mat& image) {
+    std::vector<std::pair<uchar, uchar>> rleData;
 
-    for (int i = 0; i < image.rows; ++i) {
-        const uchar* row = image.ptr<uchar>(i);
-        int count = 1;
-        uchar prev = row[0];
+    const uchar* data = image.ptr<uchar>(0);
+    int totalPixels = image.rows * image.cols;
 
-        for (int j = 1; j < image.cols; ++j) {
-            if (row[j] == prev) {
-                ++count;
-            } else {
-                rleData.emplace_back(prev, count);
-                prev = row[j];
-                count = 1;
-            }
+    uchar current = data[0];
+    uchar runLength = 1;
+
+    for (int i = 1; i < totalPixels; ++i) {
+        if (data[i] == current && runLength < 255) {
+            ++runLength;
+        } else {
+            rleData.emplace_back(current, runLength);
+            current = data[i];
+            runLength = 1;
         }
-        rleData.emplace_back(prev, count);
     }
+    rleData.emplace_back(current, runLength);
 
     return rleData;
 }
 
-std::vector<std::pair<cv::Vec3b, int>> compressColorRLE(const cv::Mat& image) {
-    std::vector<std::pair<cv::Vec3b, int>> rleData;
 
-    for (int i = 0; i < image.rows; ++i) {
-        const cv::Vec3b* row = image.ptr<cv::Vec3b>(i);
-        cv::Vec3b prev = row[0];
-        int count = 1;
+std::vector<std::pair<cv::Vec3b, uchar>> compressColorRLE(const cv::Mat& image) {
+    std::vector<std::pair<cv::Vec3b, uchar>> rleData;
 
-        for (int j = 1; j < image.cols; ++j) {
-            if (row[j] == prev) {
-                ++count;
-            } else {
-                rleData.emplace_back(prev, count);
-                prev = row[j];
-                count = 1;
-            }
+    const cv::Vec3b* data = image.ptr<cv::Vec3b>(0);
+    int totalPixels = image.rows * image.cols;
+
+    cv::Vec3b current = data[0];
+    uchar runLength = 1;
+
+    for (int i = 1; i < totalPixels; ++i) {
+        if (data[i] == current && runLength < 255) {
+            ++runLength;
+        } else {
+            rleData.emplace_back(current, runLength);
+            current = data[i];
+            runLength = 1;
         }
-        rleData.emplace_back(prev, count);
     }
+    rleData.emplace_back(current, runLength); // last run
 
     return rleData;
 }
 
-bool saveRLEToFile(const std::vector<std::pair<uchar, int>>& rleData,
+
+bool saveRLEToFile(const std::vector<std::pair<uchar, uchar>>& rleData,
                    const QString& filePath, int width, int height) {
     QFile file(filePath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    if (!file.open(QIODevice::WriteOnly)) return false;
 
-    QTextStream out(&file);
-    out << "grayscale " << width << " " << height << "\n";
+    QDataStream out(&file);
+    out.setByteOrder(QDataStream::LittleEndian);
+
+    // Write header: 'GRE' + width + height
+    out.writeRawData("GRE", 3);
+    out.writeRawData(reinterpret_cast<const char*>(&width), sizeof(int));
+    out.writeRawData(reinterpret_cast<const char*>(&height), sizeof(int));
+
+    // Write RLE data
     for (const auto& [val, count] : rleData) {
-        out << static_cast<int>(val) << " " << count << "\n";
+        out.writeRawData(reinterpret_cast<const char*>(&val), 1);    // gray value
+        out.writeRawData(reinterpret_cast<const char*>(&count), 1);  // count
     }
 
     return true;
 }
 
 
-bool saveColorRLEToFile(const std::vector<std::pair<cv::Vec3b, int>>& rleData,
+bool saveColorRLEToFile(const std::vector<std::pair<cv::Vec3b, uchar>>& rleData,
                         const QString& filePath, int width, int height) {
     QFile file(filePath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    if (!file.open(QIODevice::WriteOnly)) return false;
 
-    QTextStream out(&file);
-    out << "color " << width << " " << height << "\n";
+    QDataStream out(&file);
+    out.setByteOrder(QDataStream::LittleEndian);
+
+    // Write header: 'COL' + width + height (both as 32-bit ints)
+    out.writeRawData("COL", 3);
+    out.writeRawData(reinterpret_cast<const char*>(&width), sizeof(int));
+    out.writeRawData(reinterpret_cast<const char*>(&height), sizeof(int));
+
+    // Write RLE data
     for (const auto& [val, count] : rleData) {
-        out << static_cast<int>(val[0]) << " "
-            << static_cast<int>(val[1]) << " "
-            << static_cast<int>(val[2]) << " "
-            << count << "\n";
+        out.writeRawData(reinterpret_cast<const char*>(&val[0]), 3); // B, G, R
+        out.writeRawData(reinterpret_cast<const char*>(&count), 1);  // 1 byte count
     }
 
     return true;
 }
 
 
-double computeCompressionRatio(const cv::Mat& original, const std::vector<std::pair<uchar, int>>& rleData) {
+
+
+double computeCompressionRatio(const cv::Mat& original, const std::vector<std::pair<uchar, uchar>>& rleData) {
     int originalSize = original.rows * original.cols;
-    int compressedSize = rleData.size() * (sizeof(uchar) + sizeof(int));
+    int compressedSize = rleData.size() * 2;
     return static_cast<double>(originalSize) / compressedSize;
 }
 
-double computeColorCompressionRatio(const cv::Mat& original, const std::vector<std::pair<cv::Vec3b, int>>& rleData) {
-    int originalSize = original.rows * original.cols * 3; // każdy piksel = 3 bajty
-    int compressedSize = rleData.size() * (3 * sizeof(uchar) + sizeof(int));
+double computeColorCompressionRatio(const cv::Mat& original, const std::vector<std::pair<cv::Vec3b, uchar>>& rleData) {
+    int originalSize = original.rows * original.cols * 3;
+    int compressedSize = rleData.size() * 4;
     return static_cast<double>(originalSize) / compressedSize;
 }
 
