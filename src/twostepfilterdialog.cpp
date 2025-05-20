@@ -6,6 +6,9 @@
 #include <QSpinBox>
 #include <QPushButton>
 #include <QVector>
+#include <QFileDialog>
+#include <QTextStream>
+#include <QMessageBox>
 
 TwoStepFilterDialog::TwoStepFilterDialog(QWidget *parent) : PreviewDialogBase(parent) {
     setWindowTitle("Two-Step Filter Input");
@@ -43,6 +46,15 @@ TwoStepFilterDialog::TwoStepFilterDialog(QWidget *parent) : PreviewDialogBase(pa
     label3->setAlignment(Qt::AlignCenter);
     mainLayout->addWidget(label3);
     mainLayout->addLayout(gridLayout5x5);
+
+    QPushButton *loadButton1 = new QPushButton("Load from File");
+    connect(loadButton1, &QPushButton::clicked, this, &TwoStepFilterDialog::loadKernel1FromFile);
+    leftKernelLayout->addWidget(loadButton1);
+
+    QPushButton *loadButton2 = new QPushButton("Load from File");
+    connect(loadButton2, &QPushButton::clicked, this, &TwoStepFilterDialog::loadKernel2FromFile);
+    rightKernelLayout->addWidget(loadButton2);
+
 
     previewCheckBox = new QCheckBox("Preview");
     previewCheckBox->setChecked(false); // default off
@@ -156,4 +168,53 @@ void TwoStepFilterDialog::updateKernel5x5() {
             kernel5x5Labels[i][j]->setValue(combined5x5.at<float>(i, j));
         }
     }
+}
+
+void TwoStepFilterDialog::loadKernelFromFile(QVector<QVector<QDoubleSpinBox*>> &kernelInputs) {
+    QString fileName = QFileDialog::getOpenFileName(this, "Open Kernel File", "", "Text Files (*.txt);;All Files (*)");
+    if (fileName.isEmpty()) return;
+
+    QFile file(fileName);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, "File Error", "Could not open file.");
+        return;
+    }
+
+    QTextStream in(&file);
+    QVector<float> values;
+
+    while (!in.atEnd()) {
+        QString line = in.readLine().trimmed();
+        if (line.isEmpty()) continue;
+
+        QStringList tokens = line.split(' ', Qt::SkipEmptyParts);
+        for (const QString &token : tokens) {
+            bool ok;
+            float val = token.toFloat(&ok);
+            if (ok) values.append(val);
+        }
+    }
+
+    if (values.size() != 9) {
+        QMessageBox::warning(this, "Invalid Kernel", QString("Expected 9 values for a 3x3 kernel, but got %1.").arg(values.size()));
+        return;
+    }
+
+    int index = 0;
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            kernelInputs[i][j]->setValue(values[index++]);
+        }
+    }
+
+    updateKernel5x5();
+    emit previewRequested();
+}
+
+void TwoStepFilterDialog::loadKernel1FromFile() {
+    loadKernelFromFile(kernelInputs1);
+}
+
+void TwoStepFilterDialog::loadKernel2FromFile() {
+    loadKernelFromFile(kernelInputs2);
 }

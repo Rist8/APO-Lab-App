@@ -135,8 +135,7 @@ void ImageViewer::closeEvent(QCloseEvent *event) {
     // 2. Remove this viewer from the MainWindow's list
     if (mainWindow) {
         mainWindow->openedImages.erase(
-            std::remove(mainWindow->openedImages.begin(), mainWindow->openedImages.end(), this),
-            mainWindow->openedImages.end()
+            std::find(mainWindow->openedImages.begin(), mainWindow->openedImages.end(), this)
             );
     }
 

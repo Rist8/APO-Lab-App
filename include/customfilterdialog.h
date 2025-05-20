@@ -20,6 +20,7 @@ public:
 
 private slots:
     void updateKernelSize();
+    void loadKernelFromFile();
 
 signals:
     void previewRequested();

@@ -24,6 +24,10 @@ public:
 signals:
     void previewRequested();
 
+private slots:
+    void loadKernel1FromFile();
+    void loadKernel2FromFile();
+
 private:
     QVector<QVector<QDoubleSpinBox*>> kernelInputs1;
     QVector<QVector<QDoubleSpinBox*>> kernelInputs2;
@@ -34,6 +38,7 @@ private:
     QDoubleSpinBox* createSpinBox(QGridLayout *layout, int row, int col);
     cv::Mat extractKernel(const QVector<QVector<QDoubleSpinBox*>> &inputs);
     void updateKernel5x5();
+    void loadKernelFromFile(QVector<QVector<QDoubleSpinBox*>> &kernelInputs);
 };
 
 #endif // TWOSTEPFILTERDIALOG_H

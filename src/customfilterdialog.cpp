@@ -6,7 +6,10 @@
 #include <QInputDialog>
 #include <QComboBox>
 #include <QGridLayout>
+#include <QFileDialog>
+#include <QTextStream>
 #include <QVector>
+#include <qdir.h>
 
 CustomFilterDialog::CustomFilterDialog(QWidget *parent) : PreviewDialogBase(parent) {
     setWindowTitle("Custom Filter Input");
@@ -23,6 +26,11 @@ CustomFilterDialog::CustomFilterDialog(QWidget *parent) : PreviewDialogBase(pare
     // Grid for kernel input
     kernelLayout = new QGridLayout();
     mainLayout->addLayout(kernelLayout);
+
+    QPushButton *loadButton = new QPushButton("Load from File");
+    connect(loadButton, &QPushButton::clicked, this, &CustomFilterDialog::loadKernelFromFile);
+    mainLayout->addWidget(loadButton);
+
 
     previewCheckBox = new QCheckBox("Preview");
     previewCheckBox->setChecked(false); // default off
@@ -85,3 +93,45 @@ cv::Mat CustomFilterDialog::getKernel() {
     }
     return kernel;
 }
+
+void CustomFilterDialog::loadKernelFromFile() {
+    QString fileName = QFileDialog::getOpenFileName(this, "Open Kernel File", "", "Text Files (*.txt);;All Files (*)");
+    if (fileName.isEmpty()) return;
+
+    QFile file(fileName);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, "File Error", "Could not open file.");
+        return;
+    }
+
+    QTextStream in(&file);
+    QVector<float> values;
+    while (!in.atEnd()) {
+        QString line = in.readLine().trimmed();
+        if (line.isEmpty()) continue;
+
+        QStringList tokens = line.split(' ', Qt::SkipEmptyParts);
+        for (const QString &token : tokens) {
+            bool ok;
+            float val = token.toFloat(&ok);
+            if (ok) values.append(val);
+        }
+    }
+
+    int size = kernelSizeBox->currentText().split("x")[0].toInt();
+    if (values.size() != size * size) {
+        QMessageBox::warning(this, "Size Mismatch", QString("Expected %1 values for a %2x%2 kernel, but got %3.")
+                                 .arg(size * size).arg(size).arg(values.size()));
+        return;
+    }
+
+    int index = 0;
+    for (int i = 0; i < size; ++i) {
+        for (int j = 0; j < size; ++j) {
+            kernelInputs[i][j]->setValue(values[index++]);
+        }
+    }
+
+    emit previewRequested();
+}
+

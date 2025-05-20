@@ -226,83 +226,127 @@ void MainWindow::dropEvent(QDropEvent *event) {
     event->acceptProposedAction();
 }
 
-void MainWindow::mergeGrayscaleChannels() {
+void MainWindow::mergeGrayscaleChannels()
+{
+    /* ---------- 1.  Basic dialog scaffolding ---------- */
     QDialog dialog(this);
     dialog.setWindowTitle("Merge Grayscale Channels");
-    QVBoxLayout* layout = new QVBoxLayout(&dialog);
+    auto *layout = new QVBoxLayout(&dialog);
 
-    QLabel* instructions = new QLabel("Assign grayscale images to each channel:");
-    layout->addWidget(instructions);
+    layout->addWidget(new QLabel("Assign grayscale images to each channel:"));
 
-    QStringList channelLabels = {"Blue", "Green", "Red", "Alpha"};
-    QMap<QString, QComboBox*> channelSelectors;
+    // -----------------------------------------------------------------
+    // Colour-space selector
+    // -----------------------------------------------------------------
+    auto *csLabel  = new QLabel("Colour space:");
+    auto *csCombo  = new QComboBox;
+    csCombo->addItems({"BGR", "BGRA", "HSV", "CIELab"});
+    auto *csRow    = new QHBoxLayout;
+    csRow->addWidget(csLabel);
+    csRow->addWidget(csCombo);
+    layout->addLayout(csRow);
 
-    QStringList imageTitles;
+    /* ---------- 2.  Collect available 1-channel images ---------- */
+    QStringList              imageTitles;
     QMap<QString, ImageViewer*> imageMap;
 
-    for (QWidget* widget : openedImages) {
-        ImageViewer* viewer = qobject_cast<ImageViewer*>(widget);
-        if (viewer && viewer->getOriginalImage().channels() == 1) {
-            QString title = viewer->windowTitle();
-            imageTitles.append(title);
-            imageMap[title] = viewer;
+    for (QWidget *w : openedImages) {
+        if (auto *v = qobject_cast<ImageViewer*>(w);
+            v && v->getOriginalImage().channels() == 1)
+        {
+            imageTitles   << v->windowTitle();
+            imageMap[v->windowTitle()] = v;
         }
     }
 
-    for (const QString& label : channelLabels) {
-        QHBoxLayout* row = new QHBoxLayout;
-        row->addWidget(new QLabel(label + ":"));
-        QComboBox* comboBox = new QComboBox;
-        comboBox->addItems(imageTitles);
-        row->addWidget(comboBox);
-        layout->addLayout(row);
-        channelSelectors[label] = comboBox;
+    /* ---------- 3.  Re-usable rows for channel pickers ---------- */
+    struct Row { QLabel *lbl; QComboBox *cb; };
+    QVector<Row> rows;
+    constexpr int maxChannels = 4;       // enough for BGRA
+
+    for (int i = 0; i < maxChannels; ++i) {
+        auto *rowLay = new QHBoxLayout;
+        auto *lbl    = new QLabel("-");
+        auto *cb     = new QComboBox;
+        cb->addItems(imageTitles);
+        rowLay->addWidget(lbl);
+        rowLay->addWidget(cb);
+        layout->addLayout(rowLay);
+        rows.push_back({lbl, cb});
     }
 
-    QCheckBox* includeAlpha = new QCheckBox("Include Alpha Channel");
-    layout->addWidget(includeAlpha);
-    channelSelectors["Alpha"]->setEnabled(false);
+    // Map colour spaces to their channel names
+    const QMap<QString, QStringList> channelMap = {
+        {"BGR",    {"Blue", "Green", "Red"}},
+        {"BGRA",   {"Blue", "Green", "Red", "Alpha"}},
+        {"HSV",    {"Hue", "Saturation", "Value"}},
+        {"CIELab", {"L*",  "a*",        "b*"}}
+    };
 
-    connect(includeAlpha, &QCheckBox::toggled, [&](bool checked){
-        channelSelectors["Alpha"]->setEnabled(checked);
-    });
+    // Show / hide the rows so nothing ever piles up
+    auto refreshRows = [&]() {
+        const QString cs        = csCombo->currentText();
+        const QStringList &lbls = channelMap[cs];
 
-    QDialogButtonBox* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+        for (int i = 0; i < rows.size(); ++i) {
+            const bool vis = i < lbls.size();
+            rows[i].lbl ->setVisible(vis);
+            rows[i].cb  ->setVisible(vis);
+            if (vis) rows[i].lbl->setText(lbls[i] + ':');
+        }
+    };
+    connect(csCombo, &QComboBox::currentTextChanged, refreshRows);
+    refreshRows();               // initial state
+
+    /* ---------- 4.  OK / Cancel ---------- */
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok
+                                         | QDialogButtonBox::Cancel);
     layout->addWidget(buttons);
-
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 
     if (dialog.exec() != QDialog::Accepted) return;
 
-    for(int i = 0; i < 3; ++i) {
-        if(channelSelectors[channelLabels[i]]->currentText().isEmpty()) {
-            QMessageBox::warning(this, "Merge Error", "Choose all 3 channels");
+    /* ---------- 5.  Validate selections ---------- */
+    const QString     cs        = csCombo->currentText();
+    const QStringList labels    = channelMap[cs];
+
+    for (int i = 0; i < labels.size(); ++i) {
+        if (rows[i].cb->currentText().isEmpty()) {
+            QMessageBox::warning(this, "Merge error",
+                                 "Please choose an image for every channel.");
             return;
         }
     }
 
-    std::vector<cv::Mat> channels(3);
-    for (int i = 0; i < 3; ++i) {
-        auto viewer = imageMap[channelSelectors[channelLabels[i]]->currentText()];
-        channels[i] = viewer->getOriginalImage();
+    /* ---------- 6.  Gather grayscale planes ---------- */
+    std::vector<cv::Mat> planes;
+    planes.reserve(labels.size());
+    for (int i = 0; i < labels.size(); ++i) {
+        const QString title = rows[i].cb->currentText();
+        planes.push_back(imageMap[title]->getOriginalImage());
     }
 
-    if (includeAlpha->isChecked()) {
-        if(!channelSelectors["Alpha"]->currentText().isEmpty()) {
-            auto alphaViewer = imageMap[channelSelectors["Alpha"]->currentText()];
-            channels.push_back(alphaViewer->getOriginalImage());
-        }
-    }
-
+    /* ---------- 7.  Merge and colour-convert if needed ---------- */
     cv::Mat merged;
-    cv::merge(channels, merged);
+    cv::merge(planes, merged);               // planes in user order -> merged
 
-    auto viewer = new ImageViewer(merged, "Merged Image", nullptr, QPoint(100, 100), this);
+    if (cs == "HSV") {
+        cv::cvtColor(merged, merged, cv::COLOR_HSV2BGR);
+    } else if (cs == "CIELab") {
+        cv::cvtColor(merged, merged, cv::COLOR_Lab2BGR);
+    }
+    // For BGR nothing to do; for BGRA we keep 4-channel output.
+
+    /* ---------- 8.  Show result ---------- */
+    const QString title = "Merged image (" + cs + " → "
+                          + ((cs == "BGRA") ? "BGRA" : "BGR") + ")";
+    auto *viewer = new ImageViewer(merged, title, nullptr, {100, 100}, this);
     viewer->setAttribute(Qt::WA_DeleteOnClose);
     viewer->show();
     openedImages.append(viewer);
 }
+
 
 void MainWindow::showBitwiseOperationDialog() {
     // Show the dialog and pass list of currently opened images
