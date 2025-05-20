@@ -64,8 +64,18 @@ jobs:
 
     - name: Install dependencies on Windows
       if: matrix.os == 'windows-latest'
+      shell: pwsh
       run: |
-        choco install -y strawberryperl python ninja cmake git aqt visualstudio2022buildtools visualstudio2022-workload-vctools 
+        $ErrorActionPreference = "Continue"
+        choco install -y strawberryperl python ninja cmake git aqt visualstudio2022buildtools visualstudio2022-workload-vctools
+        if ($LASTEXITCODE -eq 3010) {
+          Write-Host "Installation requires reboot, continuing anyway."
+          exit 0
+        } elseif ($LASTEXITCODE -ne 0) {
+          Write-Host "Installation failed with exit code $LASTEXITCODE"
+          exit $LASTEXITCODE
+        }
+
 
     - name: Cache Qt AQT installation (Windows)
       if: matrix.os == 'windows-latest'
