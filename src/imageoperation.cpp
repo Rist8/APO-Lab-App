@@ -18,7 +18,7 @@ ImageOperation::ImageOperation(const QString &name,
     bind(keyBind){
 
     QStringList list;
-    if (supportedTypes & ImageOperation::Grayscale) list << "Grayscale";
+    if (supportedTypes & ImageOperation::Grayscale && !(supportedTypes & ImageOperation::Binary)) list << "Grayscale";
     if (supportedTypes & ImageOperation::Color)     list << "Color";
     if (supportedTypes & ImageOperation::Binary)    list << "Binary";
     if (supportedTypes & ImageOperation::RGBA)    list << "RGBA";
